@@ -12,8 +12,9 @@ export function loadGLTF(
 	if (!gltfLoader) {
 		gltfLoader = new GLTFLoader();
 	}
+	const loader = gltfLoader;
 	return new Promise((resolve, reject) => {
-		gltfLoader!.load(url, resolve, onProgress, reject);
+		loader.load(url, resolve, onProgress, reject);
 	});
 }
 
