@@ -21,6 +21,7 @@ export default function Campus3D() {
 	const camXRef = useRef<HTMLInputElement>(null);
 	const camYRef = useRef<HTMLInputElement>(null);
 	const camZRef = useRef<HTMLInputElement>(null);
+	const camDRef = useRef<HTMLInputElement>(null); // 카메라 ~ 타겟 거리 (zoom)
 	// 입력창 포커스 중에는 각도 스냅을 끔 (직접 입력한 값을 유지하기 위해)
 	const camInputFocusedRef = useRef(false);
 
@@ -276,7 +277,7 @@ export default function Campus3D() {
 				camera.lookAt(controls.target);
 			}
 
-			// ── 카메라 위치 입력창 갱신: 포커스 중이 아닐 때만 덮어쓰기 ──
+			// ── 카메라 위치/줌 입력창 갱신: 포커스 중이 아닐 때만 덮어쓰기 ──
 			if (!camInputFocusedRef.current) {
 				if (camXRef.current)
 					camXRef.current.value = Math.round(camera.position.x).toString();
@@ -284,6 +285,10 @@ export default function Campus3D() {
 					camYRef.current.value = Math.round(camera.position.y).toString();
 				if (camZRef.current)
 					camZRef.current.value = Math.round(camera.position.z).toString();
+				if (camDRef.current)
+					camDRef.current.value = Math.round(
+						camera.position.distanceTo(controls.target),
+					).toString();
 			}
 
 			renderer.render(scene, camera);
@@ -490,6 +495,68 @@ export default function Campus3D() {
 						</label>
 					);
 				})}
+
+				{/* 카메라 ~ 타겟 거리 (zoom) */}
+				<label
+					style={{
+						display: "flex",
+						alignItems: "center",
+						gap: 4,
+						background: "rgba(10,10,20,0.85)",
+						border: "1px solid rgba(255,255,255,0.12)",
+						borderRadius: 8,
+						padding: "0 10px",
+						backdropFilter: "blur(12px)",
+					}}
+				>
+					<span
+						style={{ fontSize: 11, color: "#888", fontFamily: "monospace" }}
+					>
+						Dist
+					</span>
+					<input
+						ref={camDRef}
+						type="number"
+						step="10"
+						min="150"
+						max="700"
+						defaultValue="0"
+						onFocus={() => {
+							camInputFocusedRef.current = true;
+						}}
+						onBlur={() => {
+							camInputFocusedRef.current = false;
+						}}
+						onChange={(e) => {
+							if (!cameraRef.current || !controlsRef.current) return;
+							const dist = Number(e.target.value);
+							if (!Number.isFinite(dist) || dist <= 0) return;
+							// 현재 방향(단위벡터)을 유지한 채 거리만 변경
+							const dir = new THREE.Vector3()
+								.subVectors(
+									cameraRef.current.position,
+									controlsRef.current.target,
+								)
+								.normalize();
+							cameraRef.current.position
+								.copy(controlsRef.current.target)
+								.addScaledVector(dir, dist);
+							cameraRef.current.lookAt(controlsRef.current.target);
+							controlsRef.current.update();
+						}}
+						style={{
+							width: 55,
+							background: "transparent",
+							color: "#ddd",
+							border: "none",
+							fontSize: 12,
+							fontFamily: "monospace",
+							outline: "none",
+							padding: "8px 0",
+							MozAppearance: "textfield",
+						}}
+					/>
+				</label>
 			</div>
 
 			{/* 상단 우측: 카메라 리셋 버튼 */}
