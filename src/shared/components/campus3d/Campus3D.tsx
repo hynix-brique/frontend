@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	forwardRef,
+	useCallback,
+	useEffect,
+	useImperativeHandle,
+	useRef,
+	useState,
+} from "react";
 import * as THREE from "three";
 import BuildingPanel from "./BuildingPanel";
 import { BUILDING_DATA, BUILDING_NAMES, getSkyParams } from "./buildingData";
@@ -13,11 +20,11 @@ import { ANGLE_STEP, CAM_POS, CAM_TARGET, useScene } from "./useScene";
  * 씬 초기화(useScene), 모델 로드(useGLTFModel), 클릭 처리(useBuildingClick)를
  * 조합하고, 애니메이션 루프와 UI를 렌더링한다.
  * ============================================================================ */
-interface Campus3DProps {
-	warningBuildings?: string[];
+export interface Campus3DRef {
+	setWarningBuildings: (names: string[]) => void;
 }
 
-export default function Campus3D({ warningBuildings = [] }: Campus3DProps) {
+const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 	const mountRef = useRef<HTMLDivElement>(null);
 	const animFrameRef = useRef<number | null>(null);
 	const startTimeRef = useRef<number>(Date.now());
@@ -71,11 +78,9 @@ export default function Campus3D({ warningBuildings = [] }: Campus3DProps) {
 		setWarningBuildings,
 	} = useGLTFModel(sceneRef, setLoading, setLoadProgress);
 
-	// 로딩 완료 후 warningBuildings 변경 시 경고 재질 적용
-	useEffect(() => {
-		if (loading) return;
-		setWarningBuildings(warningBuildings);
-	}, [warningBuildings, setWarningBuildings, loading]);
+	useImperativeHandle(ref, () => ({ setWarningBuildings }), [
+		setWarningBuildings,
+	]);
 
 	// ── 건물 선택 핸들러 ──
 	const handleBuildingClick = useCallback((name: string) => {
@@ -708,4 +713,6 @@ export default function Campus3D({ warningBuildings = [] }: Campus3DProps) {
       `}</style>
 		</div>
 	);
-}
+});
+
+export default Campus3D;
