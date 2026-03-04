@@ -40,6 +40,7 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 	const camInputFocusedRef = useRef(false);
 
 	// ── 상태 ──
+	const [warningSelection, setWarningSelection] = useState<string[]>([]);
 	const [timeMode, setTimeMode] = useState<TimeMode>("morning");
 	const timeModeRef = useRef<TimeMode>("morning");
 	const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
@@ -665,6 +666,38 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 						</label>
 					);
 				})}
+
+				{/* 경고 건물 다중 선택 */}
+				<select
+					multiple
+					value={warningSelection}
+					onChange={(e) => {
+						const selected = Array.from(e.target.selectedOptions).map(
+							(o) => o.value,
+						);
+						setWarningSelection(selected);
+						setWarningBuildings(selected);
+					}}
+					style={{
+						background: "rgba(10,10,20,0.85)",
+						color: "#f87171",
+						border: "1px solid rgba(248,113,113,0.3)",
+						borderRadius: 8,
+						padding: "4px 8px",
+						fontSize: 12,
+						fontFamily: "'Noto Sans KR', sans-serif",
+						backdropFilter: "blur(12px)",
+						height: 70,
+						outline: "none",
+						minWidth: 120,
+					}}
+				>
+					{BUILDING_NAMES.map((n) => (
+						<option key={n} value={n}>
+							{n}
+						</option>
+					))}
+				</select>
 			</div>
 
 			{/* 상단 우측: 카메라 리셋 버튼 */}
