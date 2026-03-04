@@ -71,7 +71,7 @@ export function useScene(mountRef: React.RefObject<HTMLDivElement | null>) {
 		controls.target.copy(CAM_TARGET);
 		controls.enableDamping = false;
 		controls.rotateSpeed = 0.5;
-		controls.minDistance = 150;
+		controls.minDistance = 1;
 		controls.maxDistance = 700;
 		// 초기 仰角(phi) 기준으로 상하 15° 이내만 허용
 		controls.minPolarAngle = Math.max(0.1, INIT_PHI - DEG15);
