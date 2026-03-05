@@ -23,10 +23,30 @@ export interface Campus3DRef {
 	setWarningBuildings: (names: string[]) => void;
 }
 
+const MM_SIZE = 180; // 미니맵 CSS px 크기
+const MM_MARGIN = 12; // 우측 하단 여백
+const MM_ORTHO_HALF = 500; // 미니맵 OrthographicCamera 절반 시야 (world units)
+
 const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 	const mountRef = useRef<HTMLDivElement>(null);
 	const animFrameRef = useRef<number | null>(null);
 	const startTimeRef = useRef<number>(Date.now());
+	// 미니맵: OrthographicCamera (탑다운) + 2D canvas (카메라 funnel 오버레이)
+	const minimapCameraRef = useRef<THREE.OrthographicCamera | null>(null);
+	if (!minimapCameraRef.current) {
+		const cam = new THREE.OrthographicCamera(
+			-MM_ORTHO_HALF,
+			MM_ORTHO_HALF,
+			MM_ORTHO_HALF,
+			-MM_ORTHO_HALF,
+			1,
+			2000,
+		);
+		cam.position.set(CAM_TARGET.x, 800, CAM_TARGET.z);
+		cam.lookAt(CAM_TARGET.x, 0, CAM_TARGET.z);
+		minimapCameraRef.current = cam;
+	}
+	const minimap2dRef = useRef<HTMLCanvasElement>(null);
 	// 카메라 XYZ 입력 DOM refs — 매 프레임 직접 value를 써서 리렌더 없이 갱신
 	const camXRef = useRef<HTMLInputElement>(null);
 	const camYRef = useRef<HTMLInputElement>(null);
@@ -285,6 +305,77 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 			}
 
 			renderer.render(scene, camera);
+
+			// ── 미니맵 렌더 (scissor test + OrthographicCamera 탑다운) ──
+			const mmCam = minimapCameraRef.current;
+			if (mmCam) {
+				const rw = renderer.domElement.width;
+				const rh = renderer.domElement.height;
+				const dpr = renderer.getPixelRatio();
+				const mmPx = Math.round(MM_SIZE * dpr);
+				const marginPx = Math.round(MM_MARGIN * dpr);
+
+				renderer.autoClear = false;
+				renderer.setViewport(rw - mmPx - marginPx, marginPx, mmPx, mmPx);
+				renderer.setScissor(rw - mmPx - marginPx, marginPx, mmPx, mmPx);
+				renderer.setScissorTest(true);
+				renderer.clearDepth();
+				renderer.render(scene, mmCam);
+				renderer.setScissorTest(false);
+				renderer.setViewport(0, 0, rw, rh);
+				renderer.autoClear = true;
+
+				// ── 2D canvas: 카메라 위치(점) + 시야각(부채꼴) ──
+				const cvs = minimap2dRef.current;
+				if (cvs) {
+					const ctx = cvs.getContext("2d");
+					if (ctx) {
+						ctx.clearRect(0, 0, MM_SIZE, MM_SIZE);
+
+						// 카메라 위치를 미니맵 NDC → pixel 로 변환
+						const camProj = camera.position.clone().project(mmCam);
+						const px = (camProj.x * 0.5 + 0.5) * MM_SIZE;
+						const py = (1 - (camProj.y * 0.5 + 0.5)) * MM_SIZE;
+
+						// 시선 방향 벡터 → 정면 300유닛 앞 지점을 투영
+						const dir = new THREE.Vector3();
+						camera.getWorldDirection(dir);
+						const frontProj = camera.position
+							.clone()
+							.addScaledVector(dir, 300)
+							.project(mmCam);
+						const fx = (frontProj.x * 0.5 + 0.5) * MM_SIZE;
+						const fy = (1 - (frontProj.y * 0.5 + 0.5)) * MM_SIZE;
+
+						// 2D 부채꼴 그리기
+						const angle = Math.atan2(fy - py, fx - px);
+						const hFov = (camera.fov * (Math.PI / 180) * camera.aspect) / 2;
+						const fLen = 44;
+						ctx.beginPath();
+						ctx.moveTo(px, py);
+						ctx.lineTo(
+							px + Math.cos(angle - hFov) * fLen,
+							py + Math.sin(angle - hFov) * fLen,
+						);
+						ctx.lineTo(
+							px + Math.cos(angle + hFov) * fLen,
+							py + Math.sin(angle + hFov) * fLen,
+						);
+						ctx.closePath();
+						ctx.fillStyle = "rgba(255,220,50,0.2)";
+						ctx.fill();
+						ctx.strokeStyle = "rgba(255,220,50,0.85)";
+						ctx.lineWidth = 1.5;
+						ctx.stroke();
+
+						// 카메라 위치 점
+						ctx.beginPath();
+						ctx.arc(px, py, 4, 0, Math.PI * 2);
+						ctx.fillStyle = "#ffdc32";
+						ctx.fill();
+					}
+				}
+			}
 		}
 		animate();
 
@@ -681,6 +772,30 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 			>
 				&#8634; Reset
 			</button>
+
+			{/* 미니맵 컨테이너 */}
+			<div
+				style={{
+					position: "absolute",
+					bottom: MM_MARGIN,
+					right: MM_MARGIN,
+					width: MM_SIZE,
+					height: MM_SIZE,
+					borderRadius: 8,
+					border: "1px solid rgba(255,255,255,0.12)",
+					background: "rgba(5,6,16,0.6)",
+					overflow: "hidden",
+					pointerEvents: "none",
+					zIndex: 50,
+				}}
+			>
+				<canvas
+					ref={minimap2dRef}
+					width={MM_SIZE}
+					height={MM_SIZE}
+					style={{ position: "absolute", top: 0, left: 0 }}
+				/>
+			</div>
 
 			<style>{`
         @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
