@@ -40,9 +40,19 @@ export default function DefaultLayout() {
 
 	return (
 		<Layout style={{ minHeight: "100vh" }}>
-			<Header style={{ display: "flex", alignItems: "center" }}>
+			<Header
+				style={{ display: "flex", alignItems: "center", padding: "0 24px" }}
+			>
 				<ConfigProvider
-					theme={{ components: { Menu: { itemMarginInline: 24 } } }}
+					theme={{
+						components: {
+							Menu: {
+								darkItemBg: "transparent",
+								darkPopupBg: "#001529",
+								itemMarginInline: 20,
+							},
+						},
+					}}
 				>
 					<Menu
 						theme="dark"
@@ -50,7 +60,7 @@ export default function DefaultLayout() {
 						selectedKeys={[location.pathname]}
 						items={navItems}
 						onClick={onClick}
-						style={{ flex: 1, justifyContent: "space-evenly" }}
+						style={{ flex: 1, justifyContent: "center" }}
 					/>
 				</ConfigProvider>
 			</Header>
