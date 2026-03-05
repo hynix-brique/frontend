@@ -1,23 +1,22 @@
+import { useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { loadCompressedGLB } from "../../lib/loaders";
+import { useCampus3dStore } from "./campus3dStore";
 
 /* ============================================================================
- * useGLTFModel — GLTF 모델 로드 훅
+ * useGLTFModel — GLTF 모델 로드 훅 (R3F 버전)
  *
- * campus.gltf를 비동기로 로드한 후
+ * useThree()로 R3F scene에 접근하고, campus.gltf를 비동기로 로드한 후
  *   - 건물 그룹(buildingGroupsRef) 파싱
  *   - 창문/경고등 메시 분류
- *   - 경고등 위치에 연기 파티클 생성
- *   - 건물별 라벨 스프라이트 + 수직선 생성
- * 을 처리한다.
+ *   - 경고등 위치에 연기 파티클 생성 (scene.add로 직접 추가)
+ * 모델 자체는 반환하여 <primitive>로 렌더링한다 (R3F 이벤트 시스템 활용).
  * ============================================================================ */
-export function useGLTFModel(
-	sceneRef: React.RefObject<THREE.Scene | null>,
-	setLoading: (v: boolean) => void,
-	setLoadProgress: (v: number) => void,
-) {
+export function useGLTFModel() {
+	const { scene } = useThree();
 	const buildingGroupsRef = useRef<Record<string, THREE.Object3D>>({});
+	const [model, setModel] = useState<THREE.Group | null>(null);
 	const [buildingNames, setBuildingNames] = useState<string[]>([]);
 	const [groundBox, setGroundBox] = useState<THREE.Box3 | null>(null);
 	const warningsRef = useRef<THREE.Mesh[]>([]);
@@ -29,7 +28,6 @@ export function useGLTFModel(
 	);
 
 	const setWarningBuildings = useCallback((names: string[]) => {
-		// 기존 경고 건물 재질 복원
 		for (const [mesh, orig] of warningOrigMapRef.current) {
 			const mat = mesh.material as THREE.MeshStandardMaterial;
 			mat.emissive.copy(orig.emissive);
@@ -50,7 +48,6 @@ export function useGLTFModel(
 				if (!(child as THREE.Mesh).isMesh) return;
 				const mesh = child as THREE.Mesh;
 				if (!mesh.material || !("emissive" in mesh.material)) return;
-				// 재질을 공유하지 않도록 클론 (미클론 상태일 때만)
 				if (!mesh.userData._matCloned && !mesh.userData._warnMatCloned) {
 					mesh.material = (mesh.material as THREE.Material).clone();
 					mesh.userData._warnMatCloned = true;
@@ -67,31 +64,31 @@ export function useGLTFModel(
 		warningMeshesRef.current = newMeshes;
 	}, []);
 
-	// sceneRef는 stable ref — 첫 마운트 시 useScene 이펙트가 먼저 실행되어 이미 설정됨
-	// biome-ignore lint/correctness/useExhaustiveDependencies: sceneRef is a stable ref populated before this effect runs
+	// biome-ignore lint/correctness/useExhaustiveDependencies: scene is stable from useThree
 	useEffect(() => {
-		const scene = sceneRef.current;
-		if (!scene) return;
+		let cancelled = false;
 
 		loadCompressedGLB("/campus.glb", (progress) => {
 			if (progress.total > 0)
-				setLoadProgress(Math.round((progress.loaded / progress.total) * 100));
+				useCampus3dStore.setState({
+					loadProgress: Math.round((progress.loaded / progress.total) * 100),
+				});
 		})
 			.then((gltf) => {
-				const model = gltf.scene;
-				model.scale.set(0.9, 0.9, 0.9);
-				scene.add(model);
+				if (cancelled) return;
+				const gltfModel = gltf.scene;
+				gltfModel.scale.set(0.9, 0.9, 0.9);
+				// scene.add 하지 않음 — <primitive>로 렌더링해 R3F 이벤트 시스템 활용
 
 				const buildingGroups: Record<string, THREE.Object3D> = {};
 				const warnings: THREE.Mesh[] = [];
 				const windows: THREE.Mesh[] = [];
 
-				// 모델 직계 자식을 건물 그룹으로 등록
-				for (const child of model.children) {
+				for (const child of gltfModel.children) {
 					if (child.name) buildingGroups[child.name] = child;
 				}
 
-				model.traverse((child) => {
+				gltfModel.traverse((child) => {
 					if ((child as THREE.Mesh).isMesh) {
 						const mesh = child as THREE.Mesh;
 						mesh.castShadow = true;
@@ -101,25 +98,22 @@ export function useGLTFModel(
 								name?: string;
 							};
 							const mname = (mat.name ?? "").toLowerCase();
-							// 재질명이 "wm"으로 시작하면 창문 메시로 분류 (야간 발광 대상)
 							if (mname.startsWith("wm")) windows.push(mesh);
-							// 재질명이 "wrn"으로 시작하면 경고등 메시로 분류 (점멸 대상)
 							if (mname.startsWith("wrn")) warnings.push(mesh);
 						}
 					}
 				});
 
-				model.updateMatrixWorld(true);
+				gltfModel.updateMatrixWorld(true);
 
-				// ── 경고등 위치마다 연기 파티클 시스템 생성 ──
+				// 연기 파티클은 이벤트 불필요 → scene.add로 직접 추가
 				const smokeParticles: THREE.Points[] = [];
 				warnings.forEach((warnMesh) => {
 					const worldPos = new THREE.Vector3();
-					warnMesh.getWorldPosition(worldPos); // 경고등의 월드 좌표 획득
+					warnMesh.getWorldPosition(worldPos);
 					const smokeCount = 40;
 					const positions = new Float32Array(smokeCount * 3);
 					for (let i = 0; i < smokeCount; i++) {
-						// 경고등 주변 ±1.5 범위에 파티클을 무작위 배치, 높이는 1~26 사이
 						positions[i * 3] = worldPos.x + (Math.random() - 0.5) * 3;
 						positions[i * 3 + 1] = worldPos.y + 1 + Math.random() * 25;
 						positions[i * 3 + 2] = worldPos.z + (Math.random() - 0.5) * 3;
@@ -131,17 +125,16 @@ export function useGLTFModel(
 						size: 4,
 						transparent: true,
 						opacity: 0.2,
-						blending: THREE.AdditiveBlending, // 가산 혼합으로 연기 빛 표현
-						depthWrite: false, // 뎁스 버퍼 쓰기 비활성화로 겹침 아티팩트 방지
+						blending: THREE.AdditiveBlending,
+						depthWrite: false,
 					});
 					const points = new THREE.Points(geo, mat);
-					// 애니메이션 루프에서 참조할 연기 메타데이터 저장
 					points.userData.smokeData = {
 						baseX: worldPos.x,
 						baseY: worldPos.y + 1,
 						baseZ: worldPos.z,
 						count: smokeCount,
-						topRadius: 2.5, // 파티클이 리셋될 때 퍼지는 반경
+						topRadius: 2.5,
 					};
 					scene.add(points);
 					smokeParticles.push(points);
@@ -153,18 +146,25 @@ export function useGLTFModel(
 				warningsRef.current = warnings;
 				windowsRef.current = windows;
 
-				// Ground 오브젝트 bounding box → 미니맵 카메라 범위 산출
-				const ground = model.getObjectByName("Ground");
+				const ground = gltfModel.getObjectByName("Ground");
 				if (ground) setGroundBox(new THREE.Box3().setFromObject(ground));
-				setLoading(false);
+
+				setModel(gltfModel);
+				useCampus3dStore.setState({ loading: false });
 			})
 			.catch((error: unknown) => {
+				if (cancelled) return;
 				console.error("GLTF Load Error:", error);
-				setLoading(false);
+				useCampus3dStore.setState({ loading: false });
 			});
-	}, [setLoading, setLoadProgress]);
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 
 	return {
+		model,
 		buildingGroupsRef,
 		buildingNames,
 		groundBox,
