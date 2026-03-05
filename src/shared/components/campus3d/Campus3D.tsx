@@ -47,6 +47,8 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 		minimapCameraRef.current = cam;
 	}
 	const minimap2dRef = useRef<HTMLCanvasElement>(null);
+	// 건물 센터 좌표 캐시 (로드 완료 후 1회 계산)
+	const buildingCentersRef = useRef<Record<string, THREE.Vector3>>({});
 	// 카메라 XYZ 입력 DOM refs — 매 프레임 직접 value를 써서 리렌더 없이 갱신
 	const camXRef = useRef<HTMLInputElement>(null);
 	const camYRef = useRef<HTMLInputElement>(null);
@@ -97,6 +99,19 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 	useImperativeHandle(ref, () => ({ setWarningBuildings }), [
 		setWarningBuildings,
 	]);
+
+	// 건물 로드 완료 시 각 건물 센터 좌표를 캐싱
+	// biome-ignore lint/correctness/useExhaustiveDependencies: buildingGroupsRef is a stable ref
+	useEffect(() => {
+		const centers: Record<string, THREE.Vector3> = {};
+		for (const [name, group] of Object.entries(buildingGroupsRef.current)) {
+			const box = new THREE.Box3().setFromObject(group);
+			const center = new THREE.Vector3();
+			box.getCenter(center);
+			centers[name] = center;
+		}
+		buildingCentersRef.current = centers;
+	}, [buildingNames]);
 
 	// Ground bounding box로 미니맵 OrthographicCamera frustum + 위치 동적 설정
 	useEffect(() => {
@@ -386,6 +401,23 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 						ctx.strokeStyle = "rgba(255,220,50,0.85)";
 						ctx.lineWidth = 1.5;
 						ctx.stroke();
+
+						// ── 건물 마커: 센터 점 + 이름 라벨 ──
+						for (const [name, center] of Object.entries(
+							buildingCentersRef.current,
+						)) {
+							const bProj = center.clone().project(mmCam);
+							const bx = (bProj.x * 0.5 + 0.5) * MM_SIZE;
+							const by = (1 - (bProj.y * 0.5 + 0.5)) * MM_SIZE;
+							if (bx < 0 || bx > MM_SIZE || by < 0 || by > MM_SIZE) continue;
+							ctx.beginPath();
+							ctx.arc(bx, by, 2.5, 0, Math.PI * 2);
+							ctx.fillStyle = "rgba(120,210,255,0.85)";
+							ctx.fill();
+							ctx.fillStyle = "rgba(200,240,255,0.9)";
+							ctx.font = "8px monospace";
+							ctx.fillText(name, bx + 4, by + 3);
+						}
 
 						// 카메라 위치 점
 						ctx.beginPath();
