@@ -85,11 +85,12 @@ export function useGLTFModel(
 				const warnings: THREE.Mesh[] = [];
 				const windows: THREE.Mesh[] = [];
 
+				// 모델 직계 자식을 건물 그룹으로 등록
+				for (const child of model.children) {
+					if (child.name) buildingGroups[child.name] = child;
+				}
+
 				model.traverse((child) => {
-					// 이름이 있는 Group 오브젝트를 건물 그룹으로 등록
-					if (child.name && child.type === "Group") {
-						buildingGroups[child.name] = child;
-					}
 					if ((child as THREE.Mesh).isMesh) {
 						const mesh = child as THREE.Mesh;
 						mesh.castShadow = true;
