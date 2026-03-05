@@ -447,14 +447,7 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 						const fLen = 80;
 						ctx.beginPath();
 						ctx.moveTo(px, py);
-						ctx.lineTo(
-							px + Math.cos(angle - hFov) * fLen,
-							py + Math.sin(angle - hFov) * fLen,
-						);
-						ctx.lineTo(
-							px + Math.cos(angle + hFov) * fLen,
-							py + Math.sin(angle + hFov) * fLen,
-						);
+						ctx.arc(px, py, fLen, angle - hFov, angle + hFov);
 						ctx.closePath();
 						ctx.fillStyle = "rgba(255,220,50,0.2)";
 						ctx.fill();
