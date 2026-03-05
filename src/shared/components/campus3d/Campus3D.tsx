@@ -7,9 +7,8 @@ import {
 	useState,
 } from "react";
 import * as THREE from "three";
-import BuildingPanel from "./BuildingPanel";
-import { BUILDING_DATA, getSkyParams } from "./buildingData";
-import type { BuildingInfo, TimeMode } from "./types";
+import { getSkyParams } from "./buildingData";
+import type { TimeMode } from "./types";
 import { useBuildingClick } from "./useBuildingClick";
 import { useGLTFModel } from "./useGLTFModel";
 import { ANGLE_STEP, CAM_POS, CAM_TARGET, useScene } from "./useScene";
@@ -43,12 +42,7 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 	const [warningSelection, setWarningSelection] = useState<string[]>([]);
 	const [timeMode, setTimeMode] = useState<TimeMode>("morning");
 	const timeModeRef = useRef<TimeMode>("morning");
-	const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
-	const [panelData, setPanelData] = useState<BuildingInfo | null>(null);
-	const [panelPos, setPanelPos] = useState<{ x: number; y: number }>({
-		x: 0,
-		y: 0,
-	});
+	const [, setSelectedBuilding] = useState<string | null>(null);
 	const [loading, setLoading] = useState<boolean>(true);
 	const [loadProgress, setLoadProgress] = useState<number>(0);
 	const [focusBuilding, setFocusBuilding] = useState<string>("");
@@ -83,20 +77,6 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 		setWarningBuildings,
 	]);
 
-	// ── 건물 선택 핸들러 ──
-	const handleBuildingClick = useCallback((name: string) => {
-		const data = BUILDING_DATA[name];
-		if (data) {
-			setSelectedBuilding(name);
-			setPanelData(data);
-		}
-	}, []);
-
-	const closePanel = useCallback(() => {
-		setSelectedBuilding(null);
-		setPanelData(null);
-	}, []);
-
 	const handleFocusBuilding = useCallback(
 		(name: string) => {
 			setFocusBuilding(name);
@@ -108,9 +88,8 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 			box.getCenter(center);
 			controlsRef.current.target.copy(center);
 			controlsRef.current.update();
-			handleBuildingClick(name);
 		},
-		[handleBuildingClick, controlsRef, buildingGroupsRef],
+		[controlsRef, buildingGroupsRef],
 	);
 
 	useBuildingClick(
@@ -118,8 +97,6 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 		cameraRef,
 		buildingGroupsRef,
 		setSelectedBuilding,
-		setPanelData,
-		setPanelPos,
 	);
 
 	// ── 애니메이션 루프 ──
@@ -311,11 +288,10 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 		}
 		animate();
 
-		// ── Escape 키로 패널 닫기 ──
+		// ── Escape 키로 선택 해제 ──
 		function onKeyDown(e: KeyboardEvent) {
 			if (e.key === "Escape") {
 				setSelectedBuilding(null);
-				setPanelData(null);
 			}
 		}
 		document.addEventListener("keydown", onKeyDown);
@@ -705,16 +681,6 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 			>
 				&#8634; Reset
 			</button>
-
-			{/* 건물 정보 패널 */}
-			{selectedBuilding && panelData && (
-				<BuildingPanel
-					selectedBuilding={selectedBuilding}
-					panelData={panelData}
-					panelPos={panelPos}
-					onClose={closePanel}
-				/>
-			)}
 
 			<style>{`
         @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }

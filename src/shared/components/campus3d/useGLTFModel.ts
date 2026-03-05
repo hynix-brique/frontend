@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { loadCompressedGLB } from "../../lib/loaders";
-import { BLD_NAME_MAP, BUILDING_DATA } from "./buildingData";
 
 /* ============================================================================
  * useGLTFModel — GLTF 모델 로드 훅
@@ -80,7 +79,9 @@ export function useGLTFModel(
 			.then((gltf) => {
 				const model = gltf.scene;
 				model.scale.set(0.9, 0.9, 0.9);
-				model.traverse((child) => console.log(child.name, child.type));
+				model.traverse((child) =>
+					console.log(child.name, child.type, child.userData),
+				);
 
 				// GLTF에 내장된 조명을 제거해 커스텀 조명만 사용
 				const lightsToRemove: THREE.Object3D[] = [];
@@ -100,9 +101,7 @@ export function useGLTFModel(
 				model.traverse((child) => {
 					// userData.bld_name 이 있는 노드를 건물 그룹으로 등록
 					if (child.userData?.bld_name) {
-						const bldKey = child.userData.bld_name as string;
-						// GLTF 내부 키를 표시용 이름(슬래시 포함)으로 변환
-						const displayName = BLD_NAME_MAP[bldKey] ?? bldKey;
+						const displayName = child.userData.bld_name as string;
 						buildingGroups[displayName] = child;
 					}
 					if ((child as THREE.Mesh).isMesh) {
@@ -160,94 +159,6 @@ export function useGLTFModel(
 					smokeParticles.push(points);
 				});
 				smokesRef.current = smokeParticles;
-
-				// ── 건물별 라벨 스프라이트 생성 ──
-				model.updateMatrixWorld(true);
-				for (const [displayName, group] of Object.entries(buildingGroups)) {
-					const data = BUILDING_DATA[displayName];
-					if (!data) continue;
-
-					const box = new THREE.Box3().setFromObject(group);
-					const center = new THREE.Vector3();
-					box.getCenter(center);
-					const topY = box.max.y; // 건물 최상단 Y좌표 (스프라이트 기준점)
-					const hexColor = `#${data.color.toString(16).padStart(6, "0")}`;
-
-					// 캔버스에 건물명(굵게)과 유형(작게)을 그려 텍스처로 사용
-					const canvas = document.createElement("canvas");
-					const ctx = canvas.getContext("2d");
-					if (!ctx) continue;
-					const fontSize = 32;
-					const typeFontSize = 16;
-					ctx.font = `bold ${fontSize}px 'Noto Sans KR', sans-serif`;
-					const nameWidth = ctx.measureText(displayName).width;
-					ctx.font = `${typeFontSize}px 'Noto Sans KR', sans-serif`;
-					const typeWidth = ctx.measureText(data.type).width;
-					// 캔버스 크기를 텍스트 너비에 맞게 동적으로 결정
-					const cW = Math.max(nameWidth, typeWidth) + 40;
-					const cH = fontSize + typeFontSize + 28;
-					canvas.width = cW;
-					canvas.height = cH;
-
-					// 둥근 모서리(rr=10) 배경 사각형 그리기
-					const rr = 10;
-					ctx.fillStyle = "rgba(8,8,16,0.8)";
-					ctx.beginPath();
-					ctx.moveTo(rr, 0);
-					ctx.lineTo(cW - rr, 0);
-					ctx.quadraticCurveTo(cW, 0, cW, rr);
-					ctx.lineTo(cW, cH - rr);
-					ctx.quadraticCurveTo(cW, cH, cW - rr, cH);
-					ctx.lineTo(rr, cH);
-					ctx.quadraticCurveTo(0, cH, 0, cH - rr);
-					ctx.lineTo(0, rr);
-					ctx.quadraticCurveTo(0, 0, rr, 0);
-					ctx.closePath();
-					ctx.fill();
-
-					// 건물 색상으로 하단 강조 바 그리기
-					ctx.fillStyle = hexColor;
-					ctx.fillRect(10, cH - 5, cW - 20, 3);
-
-					ctx.font = `bold ${fontSize}px 'Noto Sans KR', sans-serif`;
-					ctx.fillStyle = "#ffffff";
-					ctx.textAlign = "center";
-					ctx.textBaseline = "top";
-					ctx.fillText(displayName, cW / 2, 8);
-
-					ctx.font = `${typeFontSize}px 'Noto Sans KR', sans-serif`;
-					ctx.fillStyle = hexColor;
-					ctx.textAlign = "center";
-					ctx.fillText(data.type, cW / 2, fontSize + 12);
-
-					// 캔버스를 텍스처로 변환해 스프라이트 재질에 적용
-					const tex = new THREE.CanvasTexture(canvas);
-					tex.minFilter = THREE.LinearFilter; // 축소 시 선형 필터로 블러링 최소화
-					const spriteMat = new THREE.SpriteMaterial({
-						map: tex,
-						transparent: true,
-						depthTest: false, // 항상 최상위에 렌더링 (건물에 가려지지 않음)
-					});
-					const sprite = new THREE.Sprite(spriteMat);
-					const spriteScale = 32;
-					sprite.scale.set(spriteScale, spriteScale * (cH / cW), 1); // 캔버스 비율 유지
-					sprite.position.set(center.x, topY + 3, center.z);
-					sprite.renderOrder = 999; // 다른 오브젝트보다 나중에 렌더링해 앞에 표시
-					scene.add(sprite);
-
-					// 건물 꼭대기에서 스프라이트 하단까지 연결하는 짧은 수직 선
-					const lineGeo = new THREE.BufferGeometry().setFromPoints([
-						new THREE.Vector3(center.x, topY + 1, center.z),
-						new THREE.Vector3(center.x, topY + 5, center.z),
-					]);
-					const lineMat = new THREE.LineBasicMaterial({
-						color: data.color,
-						transparent: true,
-						opacity: 0.4,
-					});
-					const line = new THREE.Line(lineGeo, lineMat);
-					scene.add(line);
-				}
 
 				buildingGroupsRef.current = buildingGroups;
 				setBuildingNames(Object.keys(buildingGroups));
