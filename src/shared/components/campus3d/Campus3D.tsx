@@ -1,29 +1,26 @@
+import { OrbitControls } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
 	forwardRef,
 	useCallback,
 	useEffect,
 	useImperativeHandle,
 	useRef,
-	useState,
 } from "react";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { getSkyParams } from "./buildingData";
+import { useCampus3dStore } from "./campus3dStore";
 import type { TimeMode } from "./types";
-import { useBuildingClick } from "./useBuildingClick";
 import { useGLTFModel } from "./useGLTFModel";
-import { ANGLE_STEP, CAM_POS, CAM_TARGET, useScene } from "./useScene";
 
 /* ============================================================================
- * Campus3D — 메인 컴포넌트
- *
- * 씬 초기화(useScene), 모델 로드(useGLTFModel), 클릭 처리(useBuildingClick)를
- * 조합하고, 애니메이션 루프와 UI를 렌더링한다.
+ * 상수
  * ============================================================================ */
 export interface Campus3DRef {
 	setWarningBuildings: (names: string[]) => void;
 }
 
-// 건물별 기본 정보 (클릭 팝업 + 상시 라벨에 사용)
 const BUILDING_INFO: Record<
 	string,
 	{ title: string; desc: string; location: string }
@@ -40,79 +37,377 @@ const BUILDING_INFO: Record<
 	},
 };
 
-const MM_SIZE = 180; // 미니맵 CSS px 크기
-const MM_MARGIN = 12; // 우측 하단 여백
-const MM_ORTHO_HALF = 500; // 미니맵 OrthographicCamera 절반 시야 (world units)
+const CAM_POS = new THREE.Vector3(21, 13, -17);
+const CAM_TARGET = new THREE.Vector3(8, 9, -10);
+const DEG15 = (15 * Math.PI) / 180;
+const INIT_PHI = 1.04;
+export const ANGLE_STEP = (5 * Math.PI) / 180;
 
-const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
-	const containerRef = useRef<HTMLDivElement>(null); // position:relative 기준 컨테이너
-	const mountRef = useRef<HTMLDivElement>(null);
-	const animFrameRef = useRef<number | null>(null);
-	const startTimeRef = useRef<number>(Date.now());
-	// 미니맵: OrthographicCamera (탑다운) + 2D canvas (카메라 funnel 오버레이)
-	const minimapCameraRef = useRef<THREE.OrthographicCamera | null>(null);
-	if (!minimapCameraRef.current) {
-		const cam = new THREE.OrthographicCamera(
-			-MM_ORTHO_HALF,
-			MM_ORTHO_HALF,
-			MM_ORTHO_HALF,
-			-MM_ORTHO_HALF,
-			1,
-			2000,
-		);
-		cam.up.set(0, 0, 1);
-		cam.position.set(CAM_TARGET.x, 800, CAM_TARGET.z);
-		cam.lookAt(CAM_TARGET.x, 0, CAM_TARGET.z);
-		minimapCameraRef.current = cam;
+const MM_SIZE = 180;
+const MM_MARGIN = 12;
+const SKIP_NAMES = new Set(["Scene", "Ground"]);
+
+/* ============================================================================
+ * 건물 이름 탐색 (hit mesh → 부모 체인 walk-up)
+ * ============================================================================ */
+function findBuildingName(
+	obj: THREE.Object3D,
+	groups: Record<string, THREE.Object3D>,
+): string | null {
+	let cur: THREE.Object3D | null = obj;
+	while (cur) {
+		if (cur.name && groups[cur.name] && !SKIP_NAMES.has(cur.name))
+			return cur.name;
+		cur = cur.parent;
 	}
-	const minimap2dRef = useRef<HTMLCanvasElement>(null);
-	// 상시 표시 건물 라벨: animate loop에서 직접 style 수정
-	const buildingLabelRefs = useRef<Record<string, HTMLDivElement | null>>({});
-	// 건물 박스 캐시: 4개 XZ 코너 + 센터 (로드 완료 후 1회 계산)
-	const buildingBoxesRef = useRef<
-		Record<string, { corners: THREE.Vector3[]; center: THREE.Vector3 }>
-	>({});
-	// 카메라 XYZ 입력 DOM refs — 매 프레임 직접 value를 써서 리렌더 없이 갱신
-	const camXRef = useRef<HTMLInputElement>(null);
-	const camYRef = useRef<HTMLInputElement>(null);
-	const camZRef = useRef<HTMLInputElement>(null);
-	const camDRef = useRef<HTMLInputElement>(null); // 카메라 ~ 타겟 거리 (zoom)
-	const tgtXRef = useRef<HTMLInputElement>(null); // 타겟 X
-	const tgtYRef = useRef<HTMLInputElement>(null); // 타겟 Y
-	const tgtZRef = useRef<HTMLInputElement>(null); // 타겟 Z
-	// 입력창 포커스 중에는 각도 스냅을 끔 (직접 입력한 값을 유지하기 위해)
-	const camInputFocusedRef = useRef(false);
+	return null;
+}
 
-	// ── 상태 ──
-	const [warningSelection, setWarningSelection] = useState<string[]>([]);
-	const [timeMode, setTimeMode] = useState<TimeMode>("morning");
-	const timeModeRef = useRef<TimeMode>("morning");
-	const [buildingPopup, setBuildingPopup] = useState<{
-		name: string;
-		x: number;
-		y: number;
-	} | null>(null);
-	const [loading, setLoading] = useState<boolean>(true);
-	const [loadProgress, setLoadProgress] = useState<number>(0);
-	const [focusBuilding, setFocusBuilding] = useState<string>("");
+/* ============================================================================
+ * SceneAnimator — useFrame으로 sky/blink/smoke/window/label 갱신
+ * 모든 UI 상태는 useCampus3dStore.getState()로 읽음 (re-render 없음)
+ * ============================================================================ */
+interface SceneAnimatorProps {
+	warningsRef: React.MutableRefObject<THREE.Mesh[]>;
+	windowsRef: React.MutableRefObject<THREE.Mesh[]>;
+	smokesRef: React.MutableRefObject<THREE.Points[]>;
+	warningMeshesRef: React.MutableRefObject<THREE.Mesh[]>;
+	lightsRef: React.MutableRefObject<{
+		ambient: THREE.AmbientLight | null;
+		dirLight: THREE.DirectionalLight | null;
+	}>;
+	sunMeshRef: React.MutableRefObject<THREE.Mesh | null>;
+	moonMeshRef: React.MutableRefObject<THREE.Mesh | null>;
+	startTimeRef: React.MutableRefObject<number>;
+}
 
-	// timeMode가 바뀔 때마다 ref에도 반영 (애니메이션 루프에서 클로저 없이 읽기 위해)
-	useEffect(() => {
-		timeModeRef.current = timeMode;
-	}, [timeMode]);
+function SceneAnimator({
+	warningsRef,
+	windowsRef,
+	smokesRef,
+	warningMeshesRef,
+	lightsRef,
+	sunMeshRef,
+	moonMeshRef,
+	startTimeRef,
+}: SceneAnimatorProps) {
+	const { gl, camera, scene } = useThree();
 
-	// ── 하위 훅 ──
+	useFrame(() => {
+		const elapsed = Date.now() - startTimeRef.current;
+		const {
+			timeMode,
+			camInputFocused,
+			containerEl,
+			buildingLabelEls,
+			buildingBoxes,
+			camXEl,
+			camYEl,
+			camZEl,
+			camDEl,
+			tgtXEl,
+			tgtYEl,
+			tgtZEl,
+			controls,
+		} = useCampus3dStore.getState();
+
+		// 시간대 계산
+		let hours: number;
+		if (timeMode === "morning") hours = 10;
+		else if (timeMode === "night") hours = 0;
+		else {
+			const now = new Date();
+			hours = now.getHours() + now.getMinutes() / 60;
+		}
+
+		const sky = getSkyParams(hours);
+		(scene.background as THREE.Color).setRGB(sky.r, sky.g, sky.b);
+		(scene.fog as THREE.FogExp2).color.setRGB(sky.r, sky.g, sky.b);
+
+		const lights = lightsRef.current;
+		if (lights.ambient) lights.ambient.intensity = sky.ambientIntensity;
+		if (lights.dirLight) {
+			lights.dirLight.intensity = sky.dirIntensity;
+			lights.dirLight.color.setHex(sky.dirColor);
+		}
+		gl.toneMappingExposure = sky.exposure;
+
+		// 태양 위치
+		if (sky.sunPos && sunMeshRef.current) {
+			sunMeshRef.current.position.set(sky.sunPos.x, sky.sunPos.y, sky.sunPos.z);
+			sunMeshRef.current.visible = true;
+			if (sky.sunUp && lights.dirLight)
+				lights.dirLight.position.copy(sunMeshRef.current.position);
+		} else if (sunMeshRef.current) {
+			sunMeshRef.current.visible = false;
+			if (lights.dirLight) lights.dirLight.position.set(100, 300, 100);
+		}
+
+		// 달 위치
+		if (moonMeshRef.current) {
+			if (sky.moonUp) {
+				const mx = 35 - 800 * Math.cos(sky.moonAngle);
+				const my = 800 * Math.sin(sky.moonAngle) * 0.6;
+				moonMeshRef.current.position.set(mx, Math.max(my, -20), 170 + 150);
+				moonMeshRef.current.visible = true;
+				const ml = moonMeshRef.current.children.find(
+					(c): c is THREE.PointLight => (c as THREE.PointLight).isPointLight,
+				);
+				if (ml) ml.intensity = sky.moonIntensity;
+			} else {
+				moonMeshRef.current.visible = false;
+			}
+		}
+
+		// 경고등 점멸
+		for (const mesh of warningsRef.current) {
+			if (mesh.material && "emissiveIntensity" in mesh.material) {
+				(mesh.material as THREE.MeshStandardMaterial).emissiveIntensity =
+					Math.sin(elapsed * 0.006) > 0 ? 1.0 : 0.1;
+			}
+		}
+
+		// 연기 파티클
+		for (const smoke of smokesRef.current) {
+			const pos = smoke.geometry.attributes.position.array as Float32Array;
+			const sd = smoke.userData.smokeData as {
+				baseX: number;
+				baseY: number;
+				baseZ: number;
+				count: number;
+				topRadius: number;
+			};
+			for (let i = 0; i < sd.count; i++) {
+				pos[i * 3] +=
+					(Math.random() - 0.5) * 0.1 + Math.sin(elapsed * 0.0008 + i) * 0.04;
+				pos[i * 3 + 1] += 0.1 + Math.random() * 0.06;
+				pos[i * 3 + 2] += (Math.random() - 0.5) * 0.08;
+				if (pos[i * 3 + 1] > sd.baseY + 25) {
+					pos[i * 3] = sd.baseX + (Math.random() - 0.5) * sd.topRadius * 2;
+					pos[i * 3 + 1] = sd.baseY;
+					pos[i * 3 + 2] = sd.baseZ + (Math.random() - 0.5) * sd.topRadius * 2;
+				}
+			}
+			smoke.geometry.attributes.position.needsUpdate = true;
+			(smoke.material as THREE.PointsMaterial).opacity =
+				0.15 + Math.sin(elapsed * 0.003) * 0.05;
+		}
+
+		// 경고 건물 점멸
+		for (const mesh of warningMeshesRef.current) {
+			if (!mesh.material || !("emissiveIntensity" in mesh.material)) continue;
+			(mesh.material as THREE.MeshStandardMaterial).emissiveIntensity =
+				0.05 + ((Math.sin(elapsed * 0.005) + 1) / 2) * 0.75;
+		}
+
+		// 창문 재질
+		for (const mesh of windowsRef.current) {
+			if (!mesh.material) continue;
+			if (!mesh.userData._matCloned) {
+				mesh.material = (
+					mesh.material as THREE.Material
+				).clone() as THREE.MeshStandardMaterial;
+				mesh.userData._matCloned = true;
+			}
+			const mat = mesh.material as THREE.MeshStandardMaterial;
+			if (sky.isNight) {
+				mat.color.setHex(0xffdd88);
+				mat.emissive.setHex(0xffaa33);
+				mat.emissiveIntensity = 1.5;
+				mat.transparent = true;
+				mat.opacity = 0.9;
+				if (Math.random() < 0.01)
+					mat.emissiveIntensity = 0.8 + Math.random() * 1.2;
+			} else {
+				mat.color.setHex(0x8ac4ed);
+				mat.emissive.setHex(0x3388bb);
+				mat.emissiveIntensity = 0.15;
+				mat.transparent = true;
+				mat.opacity = 0.5;
+			}
+		}
+
+		// 카메라 각도 스냅
+		if (controls && !camInputFocused) {
+			const cam = camera as THREE.PerspectiveCamera;
+			const snapOffset = new THREE.Vector3().subVectors(
+				cam.position,
+				controls.target,
+			);
+			const sph = new THREE.Spherical().setFromVector3(snapOffset);
+			sph.theta = Math.round(sph.theta / ANGLE_STEP) * ANGLE_STEP;
+			sph.phi = Math.round(sph.phi / ANGLE_STEP) * ANGLE_STEP;
+			sph.phi = Math.max(
+				controls.minPolarAngle,
+				Math.min(controls.maxPolarAngle, sph.phi),
+			);
+			snapOffset.setFromSpherical(sph);
+			cam.position.copy(controls.target).add(snapOffset);
+			cam.lookAt(controls.target);
+		}
+
+		// 카메라 입력창 갱신
+		if (controls && !camInputFocused) {
+			const cam = camera as THREE.PerspectiveCamera;
+			if (camXEl) camXEl.value = Math.round(cam.position.x).toString();
+			if (camYEl) camYEl.value = Math.round(cam.position.y).toString();
+			if (camZEl) camZEl.value = Math.round(cam.position.z).toString();
+			if (camDEl)
+				camDEl.value = Math.round(
+					cam.position.distanceTo(controls.target),
+				).toString();
+			if (tgtXEl) tgtXEl.value = Math.round(controls.target.x).toString();
+			if (tgtYEl) tgtYEl.value = Math.round(controls.target.y).toString();
+			if (tgtZEl) tgtZEl.value = Math.round(controls.target.z).toString();
+		}
+
+		// 건물 라벨 3D→2D 투영
+		const canvasRect = gl.domElement.getBoundingClientRect();
+		const ctnRect = containerEl?.getBoundingClientRect();
+		const ox = canvasRect.left - (ctnRect?.left ?? 0);
+		const oy = canvasRect.top - (ctnRect?.top ?? 0);
+		for (const [name, el] of Object.entries(buildingLabelEls)) {
+			if (!el) continue;
+			const box = buildingBoxes[name];
+			if (!box) {
+				el.style.display = "none";
+				continue;
+			}
+			const proj = box.center.clone().project(camera);
+			if (proj.z > 1) {
+				el.style.display = "none";
+				continue;
+			}
+			el.style.left = `${(proj.x * 0.5 + 0.5) * canvasRect.width + ox}px`;
+			el.style.top = `${(1 - (proj.y * 0.5 + 0.5)) * canvasRect.height + oy - 32}px`;
+			el.style.display = "block";
+		}
+	});
+
+	return null;
+}
+
+/* ============================================================================
+ * MinimapRenderer — scissor test로 탑뷰 미니맵 렌더 + 2D 오버레이 갱신
+ * props 없음 — 모든 데이터를 useCampus3dStore.getState()로 읽음
+ * ============================================================================ */
+function MinimapRenderer() {
+	const { gl, scene, camera } = useThree();
+
+	useFrame(() => {
+		const {
+			minimapCamera: mmCam,
+			minimap2dEl,
+			buildingBoxes,
+		} = useCampus3dStore.getState();
+		if (!mmCam) return;
+
+		const rw = gl.domElement.width;
+		const rh = gl.domElement.height;
+		const dpr = gl.getPixelRatio();
+		const mmPx = Math.round(MM_SIZE * dpr);
+		const marginPx = Math.round(MM_MARGIN * dpr);
+
+		gl.autoClear = false;
+		gl.setViewport(rw - mmPx - marginPx, marginPx, mmPx, mmPx);
+		gl.setScissor(rw - mmPx - marginPx, marginPx, mmPx, mmPx);
+		gl.setScissorTest(true);
+		gl.clearDepth();
+		gl.render(scene, mmCam);
+		gl.setScissorTest(false);
+		gl.setViewport(0, 0, rw, rh);
+		gl.autoClear = true;
+
+		// 2D 오버레이
+		if (!minimap2dEl) return;
+		const ctx = minimap2dEl.getContext("2d");
+		if (!ctx) return;
+		ctx.clearRect(0, 0, MM_SIZE, MM_SIZE);
+
+		const camProj = camera.position.clone().project(mmCam);
+		const px = (camProj.x * 0.5 + 0.5) * MM_SIZE;
+		const py = (1 - (camProj.y * 0.5 + 0.5)) * MM_SIZE;
+
+		const dir = new THREE.Vector3();
+		camera.getWorldDirection(dir);
+		const frontProj = camera.position
+			.clone()
+			.addScaledVector(dir, 300)
+			.project(mmCam);
+		const fx = (frontProj.x * 0.5 + 0.5) * MM_SIZE;
+		const fy = (1 - (frontProj.y * 0.5 + 0.5)) * MM_SIZE;
+
+		const angle = Math.atan2(fy - py, fx - px);
+		const hFov =
+			((camera as THREE.PerspectiveCamera).fov *
+				(Math.PI / 180) *
+				(camera as THREE.PerspectiveCamera).aspect) /
+			2;
+		const fLen = 80;
+		ctx.beginPath();
+		ctx.moveTo(px, py);
+		ctx.arc(px, py, fLen, angle - hFov, angle + hFov);
+		ctx.closePath();
+		ctx.fillStyle = "rgba(255,220,50,0.2)";
+		ctx.fill();
+		ctx.strokeStyle = "rgba(255,220,50,0.85)";
+		ctx.lineWidth = 1.5;
+		ctx.stroke();
+
+		// 건물 마커 (m14, m16)
+		for (const [name, { corners, center }] of Object.entries(
+			buildingBoxes,
+		).filter(([n]) => n === "m14" || n === "m16")) {
+			const pts = corners.map((c) => {
+				const p = c.clone().project(mmCam);
+				return {
+					x: (p.x * 0.5 + 0.5) * MM_SIZE,
+					y: (1 - (p.y * 0.5 + 0.5)) * MM_SIZE,
+				};
+			});
+			ctx.beginPath();
+			ctx.moveTo(pts[0].x, pts[0].y);
+			for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+			ctx.closePath();
+			ctx.fillStyle = "rgba(120,210,255,0.25)";
+			ctx.fill();
+			ctx.strokeStyle = "rgba(120,210,255,0.75)";
+			ctx.lineWidth = 0.8;
+			ctx.stroke();
+			const cp = center.clone().project(mmCam);
+			const cx = (cp.x * 0.5 + 0.5) * MM_SIZE;
+			const cy = (1 - (cp.y * 0.5 + 0.5)) * MM_SIZE;
+			ctx.fillStyle = "rgba(200,240,255,0.9)";
+			ctx.font = "8px monospace";
+			ctx.fillText(name, cx + 2, cy + 3);
+		}
+
+		// 카메라 위치 점
+		ctx.beginPath();
+		ctx.arc(px, py, 4, 0, Math.PI * 2);
+		ctx.fillStyle = "#ffdc32";
+		ctx.fill();
+	}, 1); // priority=1: 기본 렌더 후 실행
+
+	return null;
+}
+
+/* ============================================================================
+ * CampusScene — Canvas 내부 R3F 씬 컴포넌트 (props 없음)
+ * useGLTFModel을 직접 호출하고, 로컬 mesh ref들을 SceneAnimator에 전달
+ * ============================================================================ */
+function CampusScene() {
+	const { camera, scene, gl } = useThree();
+	const lightsRef = useRef<{
+		ambient: THREE.AmbientLight | null;
+		dirLight: THREE.DirectionalLight | null;
+	}>({ ambient: null, dirLight: null });
+	const sunMeshRef = useRef<THREE.Mesh | null>(null);
+	const moonMeshRef = useRef<THREE.Mesh | null>(null);
+	const startTimeRef = useRef(Date.now());
+
 	const {
-		sceneRef,
-		cameraRef,
-		rendererRef,
-		controlsRef,
-		lightsRef,
-		sunMeshRef,
-		moonMeshRef,
-	} = useScene(mountRef);
-
-	const {
+		model,
 		buildingGroupsRef,
 		buildingNames,
 		groundBox,
@@ -121,15 +416,35 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 		smokesRef,
 		warningMeshesRef,
 		setWarningBuildings,
-	} = useGLTFModel(sceneRef, setLoading, setLoadProgress);
+	} = useGLTFModel();
 
-	useImperativeHandle(ref, () => ({ setWarningBuildings }), [
-		setWarningBuildings,
-	]);
-
-	// 건물 로드 완료 시 각 건물의 XZ 4개 코너 + 센터를 캐싱
-	// biome-ignore lint/correctness/useExhaustiveDependencies: buildingGroupsRef is a stable ref
+	// warningBuildings 변경 감지 → setWarningBuildings 호출
+	const warningBuildings = useCampus3dStore((s) => s.warningBuildings);
 	useEffect(() => {
+		setWarningBuildings(warningBuildings);
+	}, [warningBuildings, setWarningBuildings]);
+
+	// 씬 배경/안개 + 미니맵 카메라 초기화
+	// biome-ignore lint/correctness/useExhaustiveDependencies: scene is stable from useThree
+	useEffect(() => {
+		scene.background = new THREE.Color(0x345384);
+		scene.fog = new THREE.FogExp2(0x345384, 0.0006);
+		const mmCam = new THREE.OrthographicCamera(-500, 500, 500, -500, 1, 2000);
+		mmCam.up.set(0, 0, 1);
+		mmCam.position.set(CAM_TARGET.x, 800, CAM_TARGET.z);
+		mmCam.lookAt(CAM_TARGET.x, 0, CAM_TARGET.z);
+		useCampus3dStore.setState({ minimapCamera: mmCam });
+	}, []);
+
+	// 카메라를 스토어에 등록
+	useEffect(() => {
+		useCampus3dStore.setState({ camera: camera as THREE.PerspectiveCamera });
+	}, [camera]);
+
+	// 모델 로드 완료 시 스토어에 건물 데이터 저장
+	// biome-ignore lint/correctness/useExhaustiveDependencies: buildingGroupsRef is stable
+	useEffect(() => {
+		if (buildingNames.length === 0) return;
 		const boxes: Record<
 			string,
 			{ corners: THREE.Vector3[]; center: THREE.Vector3 }
@@ -149,35 +464,232 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 				center,
 			};
 		}
-		buildingBoxesRef.current = boxes;
+		useCampus3dStore.setState({
+			buildingNames,
+			buildingGroups: buildingGroupsRef.current,
+			buildingBoxes: boxes,
+		});
 	}, [buildingNames]);
 
-	// Ground bounding box로 미니맵 OrthographicCamera frustum + 위치 동적 설정
+	// Ground 박스로 미니맵 카메라 범위 설정
 	useEffect(() => {
-		if (!groundBox || !minimapCameraRef.current) return;
+		if (!groundBox) return;
+		const mmCam = useCampus3dStore.getState().minimapCamera;
+		if (!mmCam) return;
 		const center = new THREE.Vector3();
 		groundBox.getCenter(center);
 		const size = new THREE.Vector3();
 		groundBox.getSize(size);
-		const half = (Math.max(size.x, size.z) / 2) * 0.6; // 줌인 여백
-		const cam = minimapCameraRef.current;
-		cam.left = -half;
-		cam.right = half;
-		cam.top = half;
-		cam.bottom = -half;
-		cam.up.set(0, 0, 1);
-		cam.position.set(center.x, 800, center.z);
-		cam.lookAt(center.x, 0, center.z);
-		cam.updateProjectionMatrix();
+		const half = (Math.max(size.x, size.z) / 2) * 0.6;
+		mmCam.left = -half;
+		mmCam.right = half;
+		mmCam.top = half;
+		mmCam.bottom = -half;
+		mmCam.up.set(0, 0, 1);
+		mmCam.position.set(center.x, 800, center.z);
+		mmCam.lookAt(center.x, 0, center.z);
+		mmCam.updateProjectionMatrix();
 	}, [groundBox]);
 
-	// 미니맵 클릭 → 클릭한 XZ 위치로 카메라 타겟 이동
+	// 건물 클릭 핸들러
+	const handleClick = useCallback(
+		(e: {
+			stopPropagation: () => void;
+			object: THREE.Object3D;
+			clientX: number;
+			clientY: number;
+		}) => {
+			e.stopPropagation();
+			const name = findBuildingName(e.object, buildingGroupsRef.current);
+			if (name) {
+				const containerEl = useCampus3dStore.getState().containerEl;
+				const rect = containerEl?.getBoundingClientRect();
+				useCampus3dStore.setState({
+					buildingPopup: {
+						name,
+						x: e.clientX - (rect?.left ?? 0),
+						y: e.clientY - (rect?.top ?? 0),
+					},
+				});
+			} else {
+				useCampus3dStore.setState({ buildingPopup: null });
+			}
+		},
+		[buildingGroupsRef],
+	);
+
+	const handlePointerOver = useCallback(
+		(e: { stopPropagation: () => void; object: THREE.Object3D }) => {
+			e.stopPropagation();
+			const name = findBuildingName(e.object, buildingGroupsRef.current);
+			gl.domElement.style.cursor = name ? "pointer" : "default";
+		},
+		[gl, buildingGroupsRef],
+	);
+
+	const handlePointerOut = useCallback(() => {
+		gl.domElement.style.cursor = "default";
+	}, [gl]);
+
+	return (
+		<>
+			{/* 조명 */}
+			<ambientLight
+				ref={(el) => {
+					lightsRef.current.ambient = el;
+				}}
+				color={0x8899bb}
+				intensity={1.4}
+			/>
+			<directionalLight
+				ref={(el) => {
+					lightsRef.current.dirLight = el;
+				}}
+				color={0xfff0dd}
+				intensity={2.2}
+				position={[300, 500, 200]}
+				castShadow
+				shadow-mapSize={[4096, 4096]}
+				shadow-camera-left={-600}
+				shadow-camera-right={600}
+				shadow-camera-top={600}
+				shadow-camera-bottom={-600}
+				shadow-camera-near={0.5}
+				shadow-camera-far={1500}
+				shadow-bias={-0.0005}
+				shadow-normalBias={0.02}
+			/>
+
+			{/* 태양 */}
+			<mesh ref={sunMeshRef} visible={false}>
+				<sphereGeometry args={[22, 32, 32]} />
+				<meshBasicMaterial color={0xffee66} />
+				<mesh>
+					<sphereGeometry args={[35, 32, 32]} />
+					<meshBasicMaterial color={0xffcc33} transparent opacity={0.3} />
+				</mesh>
+				<mesh>
+					<sphereGeometry args={[50, 32, 32]} />
+					<meshBasicMaterial color={0xffaa22} transparent opacity={0.12} />
+				</mesh>
+			</mesh>
+
+			{/* 달 */}
+			<mesh ref={moonMeshRef} visible={false}>
+				<sphereGeometry args={[20, 32, 32]} />
+				<meshBasicMaterial color={0xfffff0} />
+				<mesh>
+					<sphereGeometry args={[30, 32, 32]} />
+					<meshBasicMaterial color={0xcceeff} transparent opacity={0.25} />
+				</mesh>
+				<pointLight color={0x8899cc} intensity={0} distance={800} />
+			</mesh>
+
+			{/* OrbitControls — 마운트 시 스토어에 등록 */}
+			<OrbitControls
+				ref={(el: OrbitControlsImpl | null) => {
+					if (el) useCampus3dStore.setState({ controls: el });
+				}}
+				target={CAM_TARGET.toArray() as [number, number, number]}
+				enableDamping={false}
+				rotateSpeed={0.5}
+				minDistance={1}
+				maxDistance={700}
+				minPolarAngle={Math.max(0.1, INIT_PHI - DEG15)}
+				maxPolarAngle={Math.min(Math.PI / 2 - 0.05, INIT_PHI + DEG15)}
+				enablePan
+			/>
+
+			{/* 건물 모델 */}
+			{model && (
+				// biome-ignore lint/a11y/noStaticElementInteractions: R3F primitive, not HTML element
+				<primitive
+					object={model}
+					onClick={handleClick}
+					onPointerOver={handlePointerOver}
+					onPointerOut={handlePointerOut}
+				/>
+			)}
+
+			{/* 애니메이션 루프 */}
+			<SceneAnimator
+				warningsRef={warningsRef}
+				windowsRef={windowsRef}
+				smokesRef={smokesRef}
+				warningMeshesRef={warningMeshesRef}
+				lightsRef={lightsRef}
+				sunMeshRef={sunMeshRef}
+				moonMeshRef={moonMeshRef}
+				startTimeRef={startTimeRef}
+			/>
+
+			{/* 미니맵 렌더 */}
+			<MinimapRenderer />
+		</>
+	);
+}
+
+/* ============================================================================
+ * Campus3D — 최상위 컴포넌트 (forwardRef + HTML UI)
+ * UI 상태는 useCampus3dStore 셀렉터로 읽고, 이벤트 핸들러는 getState()로 직접 접근
+ * ============================================================================ */
+const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 	const minimapDraggingRef = useRef(false);
 
+	// UI 상태 구독
+	const loading = useCampus3dStore((s) => s.loading);
+	const loadProgress = useCampus3dStore((s) => s.loadProgress);
+	const buildingNames = useCampus3dStore((s) => s.buildingNames);
+	const buildingPopup = useCampus3dStore((s) => s.buildingPopup);
+	const timeMode = useCampus3dStore((s) => s.timeMode);
+	const focusBuilding = useCampus3dStore((s) => s.focusBuilding);
+	const warningBuildings = useCampus3dStore((s) => s.warningBuildings);
+
+	// 언마운트 시 스토어 초기화
+	useEffect(() => {
+		return () => {
+			useCampus3dStore.setState({
+				camera: null,
+				controls: null,
+				minimapCamera: null,
+				buildingGroups: {},
+				buildingBoxes: {},
+				buildingNames: [],
+				containerEl: null,
+				minimap2dEl: null,
+				buildingLabelEls: {},
+				camXEl: null,
+				camYEl: null,
+				camZEl: null,
+				camDEl: null,
+				tgtXEl: null,
+				tgtYEl: null,
+				tgtZEl: null,
+				loading: true,
+				loadProgress: 0,
+				buildingPopup: null,
+				focusBuilding: "",
+				warningBuildings: [],
+				timeMode: "morning",
+			});
+		};
+	}, []);
+
+	// forwardRef: warningBuildings를 스토어에 써서 CampusScene이 감지
+	useImperativeHandle(ref, () => ({
+		setWarningBuildings: (names) =>
+			useCampus3dStore.setState({ warningBuildings: names }),
+	}));
+
+	// 미니맵 드래그 → 카메라 이동
 	const moveMinimapCamera = useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
-			const mmCam = minimapCameraRef.current;
-			if (!mmCam || !controlsRef.current || !cameraRef.current) return;
+			const {
+				controls,
+				camera: cam,
+				minimapCamera: mmCam,
+			} = useCampus3dStore.getState();
+			if (!mmCam || !controls || !cam) return;
 			const rect = e.currentTarget.getBoundingClientRect();
 			const clickX = e.clientX - rect.left;
 			const clickY = e.clientY - rect.top;
@@ -187,14 +699,15 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 				0,
 			);
 			ndc.unproject(mmCam);
-			const cam = cameraRef.current;
-			const ctrl = controlsRef.current;
-			const offset = new THREE.Vector3().subVectors(cam.position, ctrl.target);
-			ctrl.target.set(ndc.x, ctrl.target.y, ndc.z);
-			cam.position.copy(ctrl.target).add(offset);
-			ctrl.update();
+			const offset = new THREE.Vector3().subVectors(
+				cam.position,
+				controls.target,
+			);
+			controls.target.set(ndc.x, controls.target.y, ndc.z);
+			cam.position.copy(controls.target).add(offset);
+			controls.update();
 		},
-		[cameraRef, controlsRef],
+		[],
 	);
 
 	const handleMinimapMouseDown = useCallback(
@@ -217,361 +730,30 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 		minimapDraggingRef.current = false;
 	}, []);
 
-	const handleFocusBuilding = useCallback(
-		(name: string) => {
-			setFocusBuilding(name);
-			if (!name || !controlsRef.current || !buildingGroupsRef.current[name])
-				return;
-			const group = buildingGroupsRef.current[name];
-			const box = new THREE.Box3().setFromObject(group);
-			const center = new THREE.Vector3();
-			box.getCenter(center);
-			controlsRef.current.target.copy(center);
-			controlsRef.current.update();
-		},
-		[controlsRef, buildingGroupsRef],
-	);
+	// 건물 포커스
+	const handleFocusBuilding = useCallback((name: string) => {
+		useCampus3dStore.setState({ focusBuilding: name });
+		if (!name) return;
+		const { controls, buildingGroups } = useCampus3dStore.getState();
+		const group = buildingGroups[name];
+		if (!group || !controls) return;
+		const box = new THREE.Box3().setFromObject(group);
+		const center = new THREE.Vector3();
+		box.getCenter(center);
+		controls.target.copy(center);
+		controls.update();
+	}, []);
 
-	useBuildingClick(rendererRef, cameraRef, buildingGroupsRef, (name, x, y) => {
-		if (name && x !== undefined && y !== undefined) {
-			const rect = containerRef.current?.getBoundingClientRect();
-			setBuildingPopup({
-				name,
-				x: x - (rect?.left ?? 0),
-				y: y - (rect?.top ?? 0),
-			});
-		} else setBuildingPopup(null);
-	});
-
-	// ── 애니메이션 루프 ──
-	useEffect(() => {
-		function animate() {
-			animFrameRef.current = requestAnimationFrame(animate);
-			const scene = sceneRef.current;
-			const camera = cameraRef.current;
-			const renderer = rendererRef.current;
-			const controls = controlsRef.current;
-			if (!scene || !camera || !renderer || !controls) return;
-
-			const elapsed = Date.now() - startTimeRef.current; // 컴포넌트 마운트 후 경과 ms
-
-			// timeMode에 따라 시뮬레이션할 시각(hours)을 결정
-			let hours: number;
-			const mode = timeModeRef.current;
-			if (mode === "morning") hours = 10;
-			else if (mode === "night") hours = 0;
-			else {
-				// "auto" 모드: 실제 현재 시각(시+분/60)을 사용
-				const now = new Date();
-				hours = now.getHours() + now.getMinutes() / 60;
-			}
-
-			const sky = getSkyParams(hours);
-			(scene.background as THREE.Color).setRGB(sky.r, sky.g, sky.b);
-			(scene.fog as THREE.FogExp2).color.setRGB(sky.r, sky.g, sky.b);
-			if (lightsRef.current.ambient)
-				lightsRef.current.ambient.intensity = sky.ambientIntensity;
-			if (lightsRef.current.dirLight) {
-				lightsRef.current.dirLight.intensity = sky.dirIntensity;
-				lightsRef.current.dirLight.color.setHex(sky.dirColor);
-			}
-			renderer.toneMappingExposure = sky.exposure;
-
-			// 태양 메시 위치 갱신 및 방향광을 태양 위치로 이동
-			if (sky.sunPos && sunMeshRef.current) {
-				sunMeshRef.current.position.set(
-					sky.sunPos.x,
-					sky.sunPos.y,
-					sky.sunPos.z,
-				);
-				sunMeshRef.current.visible = true;
-				// 방향광이 태양을 따라가도록 위치를 동기화
-				if (sky.sunUp && lightsRef.current.dirLight)
-					lightsRef.current.dirLight.position.copy(sunMeshRef.current.position);
-			} else if (sunMeshRef.current) {
-				sunMeshRef.current.visible = false;
-				if (lightsRef.current.dirLight)
-					lightsRef.current.dirLight.position.set(100, 300, 100); // 야간 기본 방향광 위치
-			}
-
-			// 달 메시 위치 갱신 및 내장 포인트라이트 세기 적용
-			if (moonMeshRef.current) {
-				if (sky.moonUp) {
-					// 달도 반원 호 궤도로 이동 (태양과 반대 방향)
-					const mx = 35 - 800 * Math.cos(sky.moonAngle);
-					const my = 800 * Math.sin(sky.moonAngle) * 0.6;
-					moonMeshRef.current.position.set(mx, Math.max(my, -20), 170 + 150);
-					moonMeshRef.current.visible = true;
-					const ml = moonMeshRef.current.children.find(
-						(c): c is THREE.PointLight => (c as THREE.PointLight).isPointLight,
-					);
-					// 달 고도에 비례한 포인트라이트 세기 적용
-					if (ml) ml.intensity = sky.moonIntensity;
-				} else {
-					moonMeshRef.current.visible = false;
-				}
-			}
-
-			// ── 경고등 점멸: sin 파형으로 1.0 ↔ 0.1 emissiveIntensity 전환 ──
-			warningsRef.current.forEach((mesh) => {
-				if (mesh.material && "emissiveIntensity" in mesh.material) {
-					// sin > 0 이면 밝게(1.0), 아니면 어둡게(0.1) — 약 524ms 주기
-					const blink = Math.sin(elapsed * 0.006) > 0 ? 1.0 : 0.1;
-					(mesh.material as THREE.MeshStandardMaterial).emissiveIntensity =
-						blink;
-				}
-			});
-
-			// ── 연기 파티클 드리프트: 매 프레임마다 y를 올리고 상단 초과 시 리셋 ──
-			smokesRef.current.forEach((smoke) => {
-				const pos = smoke.geometry.attributes.position.array as Float32Array;
-				const sd = smoke.userData.smokeData as {
-					baseX: number;
-					baseY: number;
-					baseZ: number;
-					count: number;
-					topRadius: number;
-				};
-				for (let i = 0; i < sd.count; i++) {
-					// x: 미세 무작위 + sin 흔들림으로 자연스러운 굽이짐 표현
-					pos[i * 3] +=
-						(Math.random() - 0.5) * 0.1 + Math.sin(elapsed * 0.0008 + i) * 0.04;
-					pos[i * 3 + 1] += 0.1 + Math.random() * 0.06; // 위로 서서히 상승
-					pos[i * 3 + 2] += (Math.random() - 0.5) * 0.08;
-					// baseY + 25 높이를 초과하면 파티클을 기저 위치로 리셋
-					if (pos[i * 3 + 1] > sd.baseY + 25) {
-						pos[i * 3] = sd.baseX + (Math.random() - 0.5) * sd.topRadius * 2;
-						pos[i * 3 + 1] = sd.baseY;
-						pos[i * 3 + 2] =
-							sd.baseZ + (Math.random() - 0.5) * sd.topRadius * 2;
-					}
-				}
-				smoke.geometry.attributes.position.needsUpdate = true;
-				// 연기 투명도를 sin 파형으로 0.1~0.2 사이에서 천천히 변동
-				(smoke.material as THREE.PointsMaterial).opacity =
-					0.15 + Math.sin(elapsed * 0.003) * 0.05;
-			});
-
-			// ── 경고 건물 점멸: sin 파형으로 0.05↔0.8 emissiveIntensity 부드럽게 전환 ──
-			warningMeshesRef.current.forEach((mesh) => {
-				if (!mesh.material || !("emissiveIntensity" in mesh.material)) return;
-				(mesh.material as THREE.MeshStandardMaterial).emissiveIntensity =
-					0.05 + ((Math.sin(elapsed * 0.005) + 1) / 2) * 0.75;
-			});
-
-			// ── 창문 재질 전환: 야간에는 노란 발광, 주간에는 파란 반투명 유리 ──
-			windowsRef.current.forEach((mesh) => {
-				if (!mesh.material) return;
-				// 재질을 공유하지 않도록 최초 1회 클론 (다른 건물 창문과 분리)
-				if (!mesh.userData._matCloned) {
-					mesh.material = (
-						mesh.material as THREE.Material
-					).clone() as THREE.MeshStandardMaterial;
-					mesh.userData._matCloned = true;
-				}
-				const mat = mesh.material as THREE.MeshStandardMaterial;
-				if (sky.isNight) {
-					mat.color.setHex(0xffdd88); // 야간: 따뜻한 주황빛 창문
-					mat.emissive.setHex(0xffaa33);
-					mat.emissiveIntensity = 1.5;
-					mat.transparent = true;
-					mat.opacity = 0.9;
-					// 1% 확률로 emissiveIntensity를 랜덤 변동 → 창문 깜빡임 효과
-					if (Math.random() < 0.01)
-						mat.emissiveIntensity = 0.8 + Math.random() * 1.2;
-				} else {
-					mat.color.setHex(0x8ac4ed); // 주간: 하늘빛 반사 유리창
-					mat.emissive.setHex(0x3388bb);
-					mat.emissiveIntensity = 0.15;
-					mat.transparent = true;
-					mat.opacity = 0.5;
-				}
-			});
-
+	// 카메라 리셋
+	const handleReset = useCallback(() => {
+		const { camera: cam, controls } = useCampus3dStore.getState();
+		if (cam) cam.position.copy(CAM_POS);
+		if (controls) {
+			controls.target.copy(CAM_TARGET);
 			controls.update();
-			// ── 카메라 각도 스냅: 입력창 포커스 중에는 비활성화 ──
-			if (!camInputFocusedRef.current) {
-				const snapOffset = new THREE.Vector3().subVectors(
-					camera.position,
-					controls.target,
-				);
-				const sph = new THREE.Spherical().setFromVector3(snapOffset);
-				sph.theta = Math.round(sph.theta / ANGLE_STEP) * ANGLE_STEP; // 수평 방위각 스냅
-				sph.phi = Math.round(sph.phi / ANGLE_STEP) * ANGLE_STEP; // 수직 앙각 스냅
-				// 스냅 후에도 OrbitControls의 polar 제한 범위를 유지
-				sph.phi = Math.max(
-					controls.minPolarAngle,
-					Math.min(controls.maxPolarAngle, sph.phi),
-				);
-				snapOffset.setFromSpherical(sph);
-				camera.position.copy(controls.target).add(snapOffset);
-				camera.lookAt(controls.target);
-			}
-
-			// ── 카메라 위치/줌 입력창 갱신: 포커스 중이 아닐 때만 덮어쓰기 ──
-			if (!camInputFocusedRef.current) {
-				if (camXRef.current)
-					camXRef.current.value = Math.round(camera.position.x).toString();
-				if (camYRef.current)
-					camYRef.current.value = Math.round(camera.position.y).toString();
-				if (camZRef.current)
-					camZRef.current.value = Math.round(camera.position.z).toString();
-				if (camDRef.current)
-					camDRef.current.value = Math.round(
-						camera.position.distanceTo(controls.target),
-					).toString();
-				if (tgtXRef.current)
-					tgtXRef.current.value = Math.round(controls.target.x).toString();
-				if (tgtYRef.current)
-					tgtYRef.current.value = Math.round(controls.target.y).toString();
-				if (tgtZRef.current)
-					tgtZRef.current.value = Math.round(controls.target.z).toString();
-			}
-
-			renderer.render(scene, camera);
-
-			// ── 상시 건물 라벨 위치 갱신 (3D→2D 투영) ──
-			// canvas rect + container rect 차이로 오프셋 보정
-			const canvasRect = renderer.domElement.getBoundingClientRect();
-			const ctnRect = containerRef.current?.getBoundingClientRect();
-			const ox = canvasRect.left - (ctnRect?.left ?? 0);
-			const oy = canvasRect.top - (ctnRect?.top ?? 0);
-			for (const [name, el] of Object.entries(buildingLabelRefs.current)) {
-				if (!el) continue;
-				const box = buildingBoxesRef.current[name];
-				if (!box) {
-					el.style.display = "none";
-					continue;
-				}
-				const proj = box.center.clone().project(camera);
-				if (proj.z > 1) {
-					el.style.display = "none";
-					continue;
-				}
-				el.style.left = `${(proj.x * 0.5 + 0.5) * canvasRect.width + ox}px`;
-				el.style.top = `${(1 - (proj.y * 0.5 + 0.5)) * canvasRect.height + oy - 32}px`;
-				el.style.display = "block";
-			}
-
-			// ── 미니맵 렌더 (scissor test + OrthographicCamera 탑다운) ──
-			const mmCam = minimapCameraRef.current;
-			if (mmCam) {
-				const rw = renderer.domElement.width;
-				const rh = renderer.domElement.height;
-				const dpr = renderer.getPixelRatio();
-				const mmPx = Math.round(MM_SIZE * dpr);
-				const marginPx = Math.round(MM_MARGIN * dpr);
-
-				renderer.autoClear = false;
-				renderer.setViewport(rw - mmPx - marginPx, marginPx, mmPx, mmPx);
-				renderer.setScissor(rw - mmPx - marginPx, marginPx, mmPx, mmPx);
-				renderer.setScissorTest(true);
-				renderer.clearDepth();
-				renderer.render(scene, mmCam);
-				renderer.setScissorTest(false);
-				renderer.setViewport(0, 0, rw, rh);
-				renderer.autoClear = true;
-
-				// ── 2D canvas: 카메라 위치(점) + 시야각(부채꼴) ──
-				const cvs = minimap2dRef.current;
-				if (cvs) {
-					const ctx = cvs.getContext("2d");
-					if (ctx) {
-						ctx.clearRect(0, 0, MM_SIZE, MM_SIZE);
-
-						// 카메라 위치를 미니맵 NDC → pixel 로 변환
-						const camProj = camera.position.clone().project(mmCam);
-						const px = (camProj.x * 0.5 + 0.5) * MM_SIZE;
-						const py = (1 - (camProj.y * 0.5 + 0.5)) * MM_SIZE;
-
-						// 시선 방향 벡터 → 정면 300유닛 앞 지점을 투영
-						const dir = new THREE.Vector3();
-						camera.getWorldDirection(dir);
-						const frontProj = camera.position
-							.clone()
-							.addScaledVector(dir, 300)
-							.project(mmCam);
-						const fx = (frontProj.x * 0.5 + 0.5) * MM_SIZE;
-						const fy = (1 - (frontProj.y * 0.5 + 0.5)) * MM_SIZE;
-
-						// 2D 부채꼴 그리기
-						const angle = Math.atan2(fy - py, fx - px);
-						const hFov = (camera.fov * (Math.PI / 180) * camera.aspect) / 2;
-						const fLen = 80;
-						ctx.beginPath();
-						ctx.moveTo(px, py);
-						ctx.arc(px, py, fLen, angle - hFov, angle + hFov);
-						ctx.closePath();
-						ctx.fillStyle = "rgba(255,220,50,0.2)";
-						ctx.fill();
-						ctx.strokeStyle = "rgba(255,220,50,0.85)";
-						ctx.lineWidth = 1.5;
-						ctx.stroke();
-
-						// ── 건물 마커: 2D 폴리곤(탑뷰 풋프린트) + 이름 라벨 ──
-						for (const [name, { corners, center }] of Object.entries(
-							buildingBoxesRef.current,
-						).filter(([n]) => n === "m14" || n === "m16")) {
-							const pts = corners.map((c) => {
-								const p = c.clone().project(mmCam);
-								return {
-									x: (p.x * 0.5 + 0.5) * MM_SIZE,
-									y: (1 - (p.y * 0.5 + 0.5)) * MM_SIZE,
-								};
-							});
-							ctx.beginPath();
-							ctx.moveTo(pts[0].x, pts[0].y);
-							for (let i = 1; i < pts.length; i++)
-								ctx.lineTo(pts[i].x, pts[i].y);
-							ctx.closePath();
-							ctx.fillStyle = "rgba(120,210,255,0.25)";
-							ctx.fill();
-							ctx.strokeStyle = "rgba(120,210,255,0.75)";
-							ctx.lineWidth = 0.8;
-							ctx.stroke();
-							// 이름 라벨 (센터 투영)
-							const cp = center.clone().project(mmCam);
-							const cx = (cp.x * 0.5 + 0.5) * MM_SIZE;
-							const cy = (1 - (cp.y * 0.5 + 0.5)) * MM_SIZE;
-							ctx.fillStyle = "rgba(200,240,255,0.9)";
-							ctx.font = "8px monospace";
-							ctx.fillText(name, cx + 2, cy + 3);
-						}
-
-						// 카메라 위치 점
-						ctx.beginPath();
-						ctx.arc(px, py, 4, 0, Math.PI * 2);
-						ctx.fillStyle = "#ffdc32";
-						ctx.fill();
-					}
-				}
-			}
 		}
-		animate();
-
-		// ── Escape 키로 선택 해제 ──
-		function onKeyDown(e: KeyboardEvent) {
-			if (e.key === "Escape") setBuildingPopup(null);
-		}
-		document.addEventListener("keydown", onKeyDown);
-
-		return () => {
-			document.removeEventListener("keydown", onKeyDown);
-			if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-		};
-	}, [
-		sceneRef,
-		cameraRef,
-		rendererRef,
-		controlsRef,
-		lightsRef,
-		sunMeshRef,
-		moonMeshRef,
-		warningsRef,
-		windowsRef,
-		smokesRef,
-		warningMeshesRef,
-	]);
+		useCampus3dStore.setState({ focusBuilding: "" });
+	}, []);
 
 	const timeModes: { value: TimeMode; label: string }[] = [
 		{ value: "morning", label: "아침 (Morning)" },
@@ -581,10 +763,30 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 
 	return (
 		<div
-			ref={containerRef}
+			ref={(el) => useCampus3dStore.setState({ containerEl: el })}
 			style={{ width: "100%", height: "100%", position: "relative" }}
 		>
-			<div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+			{/* R3F Canvas */}
+			<Canvas
+				camera={{
+					fov: 45,
+					position: CAM_POS.toArray() as [number, number, number],
+					near: 1,
+					far: 5000,
+				}}
+				shadows
+				gl={{
+					antialias: true,
+					toneMapping: THREE.ACESFilmicToneMapping,
+					toneMappingExposure: 1.6,
+				}}
+				style={{ width: "100%", height: "100%" }}
+				onPointerMissed={() =>
+					useCampus3dStore.setState({ buildingPopup: null })
+				}
+			>
+				<CampusScene />
+			</Canvas>
 
 			{/* 로딩 오버레이 */}
 			{loading && (
@@ -634,7 +836,7 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 				</div>
 			)}
 
-			{/* 상단 좌측: 시간 모드 + 건물 선택 드롭다운 */}
+			{/* 상단 좌측 컨트롤 */}
 			<div
 				style={{
 					position: "absolute",
@@ -645,21 +847,13 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 					gap: 10,
 				}}
 			>
+				{/* 시간 모드 */}
 				<select
 					value={timeMode}
-					onChange={(e) => setTimeMode(e.target.value as TimeMode)}
-					style={{
-						background: "rgba(10,10,20,0.85)",
-						color: "#ddd",
-						border: "1px solid rgba(255,255,255,0.12)",
-						borderRadius: 8,
-						padding: "8px 14px",
-						fontSize: 13,
-						fontFamily: "'Noto Sans KR', sans-serif",
-						backdropFilter: "blur(12px)",
-						cursor: "pointer",
-						outline: "none",
-					}}
+					onChange={(e) =>
+						useCampus3dStore.setState({ timeMode: e.target.value as TimeMode })
+					}
+					style={selectStyle}
 				>
 					{timeModes.map((m) => (
 						<option key={m.value} value={m.value}>
@@ -667,21 +861,12 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 						</option>
 					))}
 				</select>
+
+				{/* 건물 선택 */}
 				<select
 					value={focusBuilding}
 					onChange={(e) => handleFocusBuilding(e.target.value)}
-					style={{
-						background: "rgba(10,10,20,0.85)",
-						color: "#ddd",
-						border: "1px solid rgba(255,255,255,0.12)",
-						borderRadius: 8,
-						padding: "8px 14px",
-						fontSize: 13,
-						fontFamily: "'Noto Sans KR', sans-serif",
-						backdropFilter: "blur(12px)",
-						cursor: "pointer",
-						outline: "none",
-					}}
+					style={selectStyle}
 				>
 					<option value="">건물 선택...</option>
 					{buildingNames.map((n) => (
@@ -691,128 +876,103 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 					))}
 				</select>
 
-				{/* 카메라 XYZ 위치 컨트롤 */}
-				{(["X", "Y", "Z"] as const).map((axis, i) => {
-					const axisRef = [camXRef, camYRef, camZRef][i];
-					return (
-						<label
-							key={axis}
-							style={{
-								display: "flex",
-								alignItems: "center",
-								gap: 4,
-								background: "rgba(10,10,20,0.85)",
-								border: "1px solid rgba(255,255,255,0.12)",
-								borderRadius: 8,
-								padding: "0 10px",
-								backdropFilter: "blur(12px)",
-							}}
-						>
-							<span
-								style={{ fontSize: 11, color: "#888", fontFamily: "monospace" }}
-							>
-								{axis}
-							</span>
-							<input
-								ref={axisRef}
-								type="number"
-								step="10"
-								defaultValue="0"
-								onFocus={() => {
-									camInputFocusedRef.current = true;
-								}}
-								onBlur={() => {
-									camInputFocusedRef.current = false;
-								}}
-								onChange={(e) => {
-									if (!cameraRef.current || !controlsRef.current) return;
-									const val = Number(e.target.value);
-									if (!Number.isFinite(val)) return;
-									if (axis === "X") cameraRef.current.position.x = val;
-									else if (axis === "Y") cameraRef.current.position.y = val;
-									else cameraRef.current.position.z = val;
-									cameraRef.current.lookAt(controlsRef.current.target);
-									controlsRef.current.update();
-								}}
-								style={{
-									width: 60,
-									background: "transparent",
-									color: "#ddd",
-									border: "none",
-									fontSize: 12,
-									fontFamily: "monospace",
-									outline: "none",
-									padding: "8px 0",
-									MozAppearance: "textfield",
-								}}
-							/>
-						</label>
-					);
-				})}
-
-				{/* 카메라 ~ 타겟 거리 (zoom) */}
-				<label
-					style={{
-						display: "flex",
-						alignItems: "center",
-						gap: 4,
-						background: "rgba(10,10,20,0.85)",
-						border: "1px solid rgba(255,255,255,0.12)",
-						borderRadius: 8,
-						padding: "0 10px",
-						backdropFilter: "blur(12px)",
-					}}
-				>
-					<span
-						style={{ fontSize: 11, color: "#888", fontFamily: "monospace" }}
-					>
-						Dist
-					</span>
+				{/* 카메라 X */}
+				<label style={inputLabelStyle}>
+					<span style={inputAxisLabelStyle}>X</span>
 					<input
-						ref={camDRef}
+						ref={(el) => useCampus3dStore.setState({ camXEl: el })}
+						type="number"
+						step="10"
+						defaultValue="0"
+						onChange={(e) => {
+							const val = Number(e.target.value);
+							if (!Number.isFinite(val)) return;
+							const { camera: cam, controls } = useCampus3dStore.getState();
+							if (!cam || !controls) return;
+							cam.position.x = val;
+							cam.lookAt(controls.target);
+							controls.update();
+						}}
+						onFocus={() => useCampus3dStore.setState({ camInputFocused: true })}
+						onBlur={() => useCampus3dStore.setState({ camInputFocused: false })}
+						style={{ ...inputStyle, width: 60 }}
+					/>
+				</label>
+
+				{/* 카메라 Y */}
+				<label style={inputLabelStyle}>
+					<span style={inputAxisLabelStyle}>Y</span>
+					<input
+						ref={(el) => useCampus3dStore.setState({ camYEl: el })}
+						type="number"
+						step="10"
+						defaultValue="0"
+						onChange={(e) => {
+							const val = Number(e.target.value);
+							if (!Number.isFinite(val)) return;
+							const { camera: cam, controls } = useCampus3dStore.getState();
+							if (!cam || !controls) return;
+							cam.position.y = val;
+							cam.lookAt(controls.target);
+							controls.update();
+						}}
+						onFocus={() => useCampus3dStore.setState({ camInputFocused: true })}
+						onBlur={() => useCampus3dStore.setState({ camInputFocused: false })}
+						style={{ ...inputStyle, width: 60 }}
+					/>
+				</label>
+
+				{/* 카메라 Z */}
+				<label style={inputLabelStyle}>
+					<span style={inputAxisLabelStyle}>Z</span>
+					<input
+						ref={(el) => useCampus3dStore.setState({ camZEl: el })}
+						type="number"
+						step="10"
+						defaultValue="0"
+						onChange={(e) => {
+							const val = Number(e.target.value);
+							if (!Number.isFinite(val)) return;
+							const { camera: cam, controls } = useCampus3dStore.getState();
+							if (!cam || !controls) return;
+							cam.position.z = val;
+							cam.lookAt(controls.target);
+							controls.update();
+						}}
+						onFocus={() => useCampus3dStore.setState({ camInputFocused: true })}
+						onBlur={() => useCampus3dStore.setState({ camInputFocused: false })}
+						style={{ ...inputStyle, width: 60 }}
+					/>
+				</label>
+
+				{/* 카메라 거리 */}
+				<label style={inputLabelStyle}>
+					<span style={inputAxisLabelStyle}>Dist</span>
+					<input
+						ref={(el) => useCampus3dStore.setState({ camDEl: el })}
 						type="number"
 						step="10"
 						min="150"
 						max="700"
 						defaultValue="0"
-						onFocus={() => {
-							camInputFocusedRef.current = true;
-						}}
-						onBlur={() => {
-							camInputFocusedRef.current = false;
-						}}
 						onChange={(e) => {
-							if (!cameraRef.current || !controlsRef.current) return;
 							const dist = Number(e.target.value);
 							if (!Number.isFinite(dist) || dist <= 0) return;
-							// 현재 방향(단위벡터)을 유지한 채 거리만 변경
+							const { camera: cam, controls } = useCampus3dStore.getState();
+							if (!cam || !controls) return;
 							const dir = new THREE.Vector3()
-								.subVectors(
-									cameraRef.current.position,
-									controlsRef.current.target,
-								)
+								.subVectors(cam.position, controls.target)
 								.normalize();
-							cameraRef.current.position
-								.copy(controlsRef.current.target)
-								.addScaledVector(dir, dist);
-							cameraRef.current.lookAt(controlsRef.current.target);
-							controlsRef.current.update();
+							cam.position.copy(controls.target).addScaledVector(dir, dist);
+							cam.lookAt(controls.target);
+							controls.update();
 						}}
-						style={{
-							width: 55,
-							background: "transparent",
-							color: "#ddd",
-							border: "none",
-							fontSize: 12,
-							fontFamily: "monospace",
-							outline: "none",
-							padding: "8px 0",
-							MozAppearance: "textfield",
-						}}
+						onFocus={() => useCampus3dStore.setState({ camInputFocused: true })}
+						onBlur={() => useCampus3dStore.setState({ camInputFocused: false })}
+						style={{ ...inputStyle, width: 55 }}
 					/>
 				</label>
 
-				{/* 구분선 */}
 				<div
 					style={{
 						width: 1,
@@ -822,84 +982,86 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 					}}
 				/>
 
-				{/* 타겟 XYZ 컨트롤 */}
-				{(["TX", "TY", "TZ"] as const).map((axis, i) => {
-					const axisRef = [tgtXRef, tgtYRef, tgtZRef][i];
-					return (
-						<label
-							key={axis}
-							style={{
-								display: "flex",
-								alignItems: "center",
-								gap: 4,
-								background: "rgba(10,10,20,0.85)",
-								border: "1px solid rgba(255,255,255,0.12)",
-								borderRadius: 8,
-								padding: "0 10px",
-								backdropFilter: "blur(12px)",
-							}}
-						>
-							<span
-								style={{ fontSize: 11, color: "#666", fontFamily: "monospace" }}
-							>
-								{axis}
-							</span>
-							<input
-								ref={axisRef}
-								type="number"
-								step="10"
-								defaultValue="0"
-								onFocus={() => {
-									camInputFocusedRef.current = true;
-								}}
-								onBlur={() => {
-									camInputFocusedRef.current = false;
-								}}
-								onChange={(e) => {
-									if (!cameraRef.current || !controlsRef.current) return;
-									const val = Number(e.target.value);
-									if (!Number.isFinite(val)) return;
-									if (axis === "TX") controlsRef.current.target.x = val;
-									else if (axis === "TY") controlsRef.current.target.y = val;
-									else controlsRef.current.target.z = val;
-									cameraRef.current.lookAt(controlsRef.current.target);
-									controlsRef.current.update();
-								}}
-								style={{
-									width: 60,
-									background: "transparent",
-									color: "#aaa",
-									border: "none",
-									fontSize: 12,
-									fontFamily: "monospace",
-									outline: "none",
-									padding: "8px 0",
-									MozAppearance: "textfield",
-								}}
-							/>
-						</label>
-					);
-				})}
+				{/* 타겟 TX */}
+				<label style={inputLabelStyle}>
+					<span style={{ ...inputAxisLabelStyle, color: "#666" }}>TX</span>
+					<input
+						ref={(el) => useCampus3dStore.setState({ tgtXEl: el })}
+						type="number"
+						step="10"
+						defaultValue="0"
+						onChange={(e) => {
+							const val = Number(e.target.value);
+							if (!Number.isFinite(val)) return;
+							const { camera: cam, controls } = useCampus3dStore.getState();
+							if (!cam || !controls) return;
+							controls.target.x = val;
+							cam.lookAt(controls.target);
+							controls.update();
+						}}
+						onFocus={() => useCampus3dStore.setState({ camInputFocused: true })}
+						onBlur={() => useCampus3dStore.setState({ camInputFocused: false })}
+						style={{ ...inputStyle, width: 60, color: "#aaa" }}
+					/>
+				</label>
+
+				{/* 타겟 TY */}
+				<label style={inputLabelStyle}>
+					<span style={{ ...inputAxisLabelStyle, color: "#666" }}>TY</span>
+					<input
+						ref={(el) => useCampus3dStore.setState({ tgtYEl: el })}
+						type="number"
+						step="10"
+						defaultValue="0"
+						onChange={(e) => {
+							const val = Number(e.target.value);
+							if (!Number.isFinite(val)) return;
+							const { camera: cam, controls } = useCampus3dStore.getState();
+							if (!cam || !controls) return;
+							controls.target.y = val;
+							cam.lookAt(controls.target);
+							controls.update();
+						}}
+						onFocus={() => useCampus3dStore.setState({ camInputFocused: true })}
+						onBlur={() => useCampus3dStore.setState({ camInputFocused: false })}
+						style={{ ...inputStyle, width: 60, color: "#aaa" }}
+					/>
+				</label>
+
+				{/* 타겟 TZ */}
+				<label style={inputLabelStyle}>
+					<span style={{ ...inputAxisLabelStyle, color: "#666" }}>TZ</span>
+					<input
+						ref={(el) => useCampus3dStore.setState({ tgtZEl: el })}
+						type="number"
+						step="10"
+						defaultValue="0"
+						onChange={(e) => {
+							const val = Number(e.target.value);
+							if (!Number.isFinite(val)) return;
+							const { camera: cam, controls } = useCampus3dStore.getState();
+							if (!cam || !controls) return;
+							controls.target.z = val;
+							cam.lookAt(controls.target);
+							controls.update();
+						}}
+						onFocus={() => useCampus3dStore.setState({ camInputFocused: true })}
+						onBlur={() => useCampus3dStore.setState({ camInputFocused: false })}
+						style={{ ...inputStyle, width: 60, color: "#aaa" }}
+					/>
+				</label>
 
 				{/* 경고 건물 선택 */}
 				<select
-					value={warningSelection[0] ?? ""}
+					value={warningBuildings[0] ?? ""}
 					onChange={(e) => {
 						const val = e.target.value;
-						const selected = val ? [val] : [];
-						setWarningSelection(selected);
-						setWarningBuildings(selected);
+						useCampus3dStore.setState({ warningBuildings: val ? [val] : [] });
 					}}
 					style={{
-						background: "rgba(10,10,20,0.85)",
+						...selectStyle,
 						color: "#f87171",
 						border: "1px solid rgba(248,113,113,0.3)",
-						borderRadius: 8,
-						padding: "8px 14px",
-						fontSize: 12,
-						fontFamily: "'Noto Sans KR', sans-serif",
-						backdropFilter: "blur(12px)",
-						outline: "none",
 						minWidth: 120,
 					}}
 				>
@@ -912,31 +1074,16 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 				</select>
 			</div>
 
-			{/* 상단 우측: 카메라 리셋 버튼 */}
+			{/* Reset 버튼 */}
 			<button
 				type="button"
-				onClick={() => {
-					if (!controlsRef.current || !cameraRef.current) return;
-					cameraRef.current.position.copy(CAM_POS);
-					controlsRef.current.target.copy(CAM_TARGET);
-					controlsRef.current.update();
-					setFocusBuilding("");
-				}}
+				onClick={handleReset}
 				style={{
 					position: "absolute",
 					top: 20,
 					right: 24,
 					zIndex: 100,
-					background: "rgba(10,10,20,0.85)",
-					color: "#ddd",
-					border: "1px solid rgba(255,255,255,0.12)",
-					borderRadius: 8,
-					padding: "8px 14px",
-					fontSize: 13,
-					fontFamily: "'Noto Sans KR', sans-serif",
-					backdropFilter: "blur(12px)",
-					cursor: "pointer",
-					outline: "none",
+					...buttonStyle,
 				}}
 			>
 				&#8634; Reset
@@ -948,9 +1095,14 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 				return (
 					<div
 						key={name}
-						ref={(el) => {
-							buildingLabelRefs.current[name] = el;
-						}}
+						ref={(el) =>
+							useCampus3dStore.setState({
+								buildingLabelEls: {
+									...useCampus3dStore.getState().buildingLabelEls,
+									[name]: el,
+								},
+							})
+						}
 						style={{
 							position: "absolute",
 							display: "none",
@@ -1032,7 +1184,7 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 					);
 				})()}
 
-			{/* 미니맵 컨테이너 */}
+			{/* 미니맵 */}
 			{/* biome-ignore lint/a11y/noStaticElementInteractions: minimap is a visual control */}
 			<div
 				onMouseDown={handleMinimapMouseDown}
@@ -1054,7 +1206,7 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 				}}
 			>
 				<canvas
-					ref={minimap2dRef}
+					ref={(el) => useCampus3dStore.setState({ minimap2dEl: el })}
 					width={MM_SIZE}
 					height={MM_SIZE}
 					style={{ position: "absolute", top: 0, left: 0 }}
@@ -1070,3 +1222,58 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 });
 
 export default Campus3D;
+
+/* ── 공통 인라인 스타일 ─────────────────────────────────────────────────────── */
+const selectStyle: React.CSSProperties = {
+	background: "rgba(10,10,20,0.85)",
+	color: "#ddd",
+	border: "1px solid rgba(255,255,255,0.12)",
+	borderRadius: 8,
+	padding: "8px 14px",
+	fontSize: 13,
+	fontFamily: "'Noto Sans KR', sans-serif",
+	backdropFilter: "blur(12px)",
+	cursor: "pointer",
+	outline: "none",
+};
+
+const inputLabelStyle: React.CSSProperties = {
+	display: "flex",
+	alignItems: "center",
+	gap: 4,
+	background: "rgba(10,10,20,0.85)",
+	border: "1px solid rgba(255,255,255,0.12)",
+	borderRadius: 8,
+	padding: "0 10px",
+	backdropFilter: "blur(12px)",
+};
+
+const inputAxisLabelStyle: React.CSSProperties = {
+	fontSize: 11,
+	color: "#888",
+	fontFamily: "monospace",
+};
+
+const inputStyle: React.CSSProperties = {
+	background: "transparent",
+	color: "#ddd",
+	border: "none",
+	fontSize: 12,
+	fontFamily: "monospace",
+	outline: "none",
+	padding: "8px 0",
+	MozAppearance: "textfield",
+};
+
+const buttonStyle: React.CSSProperties = {
+	background: "rgba(10,10,20,0.85)",
+	color: "#ddd",
+	border: "1px solid rgba(255,255,255,0.12)",
+	borderRadius: 8,
+	padding: "8px 14px",
+	fontSize: 13,
+	fontFamily: "'Noto Sans KR', sans-serif",
+	backdropFilter: "blur(12px)",
+	cursor: "pointer",
+	outline: "none",
+};
