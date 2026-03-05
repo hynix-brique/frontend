@@ -79,19 +79,6 @@ export function useGLTFModel(
 			.then((gltf) => {
 				const model = gltf.scene;
 				model.scale.set(0.9, 0.9, 0.9);
-				model.traverse((child) =>
-					console.log(child.name, child.type, child.userData),
-				);
-
-				// GLTF에 내장된 조명을 제거해 커스텀 조명만 사용
-				const lightsToRemove: THREE.Object3D[] = [];
-				model.traverse((child) => {
-					if ((child as THREE.Light).isLight) lightsToRemove.push(child);
-				});
-				lightsToRemove.forEach((light) => {
-					if (light.parent) light.parent.remove(light);
-				});
-
 				scene.add(model);
 
 				const buildingGroups: Record<string, THREE.Object3D> = {};
