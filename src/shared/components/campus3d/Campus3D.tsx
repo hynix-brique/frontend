@@ -86,6 +86,7 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 	const {
 		buildingGroupsRef,
 		buildingNames,
+		groundBox,
 		warningsRef,
 		windowsRef,
 		smokesRef,
@@ -96,6 +97,24 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 	useImperativeHandle(ref, () => ({ setWarningBuildings }), [
 		setWarningBuildings,
 	]);
+
+	// Ground bounding box로 미니맵 OrthographicCamera frustum + 위치 동적 설정
+	useEffect(() => {
+		if (!groundBox || !minimapCameraRef.current) return;
+		const center = new THREE.Vector3();
+		groundBox.getCenter(center);
+		const size = new THREE.Vector3();
+		groundBox.getSize(size);
+		const half = (Math.max(size.x, size.z) / 2) * 1.1; // 10% 여백
+		const cam = minimapCameraRef.current;
+		cam.left = -half;
+		cam.right = half;
+		cam.top = half;
+		cam.bottom = -half;
+		cam.position.set(center.x, 800, center.z);
+		cam.lookAt(center.x, 0, center.z);
+		cam.updateProjectionMatrix();
+	}, [groundBox]);
 
 	const handleFocusBuilding = useCallback(
 		(name: string) => {
