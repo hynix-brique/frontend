@@ -11,6 +11,7 @@ interface Campus3DState {
 	warningBuildings: string[];
 	buildingNames: string[];
 	buildingPopup: { name: string; x: number; y: number } | null;
+	hoveredBuilding: string | null;
 	focusBuilding: string;
 	loading: boolean;
 	loadProgress: number;
@@ -41,6 +42,7 @@ export const useCampus3dStore = create<Campus3DState>()(() => ({
 	warningBuildings: [],
 	buildingNames: [],
 	buildingPopup: null,
+	hoveredBuilding: null,
 	focusBuilding: "",
 	loading: true,
 	loadProgress: 0,

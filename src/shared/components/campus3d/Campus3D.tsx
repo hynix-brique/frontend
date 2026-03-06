@@ -1,4 +1,4 @@
-import { OrbitControls } from "@react-three/drei";
+import { Html, OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
 	forwardRef,
@@ -284,6 +284,54 @@ function SceneAnimator({
 }
 
 /* ============================================================================
+ * BuildingHoverTooltip — drei <Html>로 3D 월드 좌표에 툴팁 앵커
+ * ============================================================================ */
+function BuildingHoverTooltip() {
+	const hoveredBuilding = useCampus3dStore((s) => s.hoveredBuilding);
+	if (!hoveredBuilding) return null;
+	const info = BUILDING_INFO[hoveredBuilding];
+	if (!info) return null;
+
+	return (
+		<Html position={[info.x, info.h, info.z]} style={{ pointerEvents: "none" }}>
+			<div
+				style={{
+					background: "rgba(10,12,24,0.95)",
+					border: "1px solid rgba(255,255,255,0.18)",
+					borderRadius: 8,
+					padding: "10px 14px",
+					backdropFilter: "blur(12px)",
+					minWidth: 200,
+					whiteSpace: "nowrap",
+					transform: "translate(12px, -50%)",
+				}}
+			>
+				<div
+					style={{
+						color: "#fff",
+						fontWeight: 700,
+						fontSize: 13,
+						marginBottom: 4,
+					}}
+				>
+					{info.title}
+				</div>
+				{info.desc && (
+					<div style={{ color: "#ddd", fontSize: 11, marginBottom: 6 }}>
+						{info.desc}
+					</div>
+				)}
+				{info.location && (
+					<div style={{ color: "#69c0ff", fontSize: 10 }}>
+						📍 {info.location}
+					</div>
+				)}
+			</div>
+		</Html>
+	);
+}
+
+/* ============================================================================
  * MinimapRenderer — scissor test로 탑뷰 미니맵 렌더 + 2D 오버레이 갱신
  * props 없음 — 모든 데이터를 useCampus3dStore.getState()로 읽음
  * ============================================================================ */
@@ -514,17 +562,19 @@ function CampusScene() {
 		[buildingGroupsRef],
 	);
 
-	const handlePointerOver = useCallback(
+	const handlePointerMove = useCallback(
 		(e: { stopPropagation: () => void; object: THREE.Object3D }) => {
 			e.stopPropagation();
 			const name = findBuildingName(e.object, buildingGroupsRef.current);
 			gl.domElement.style.cursor = name ? "pointer" : "default";
+			useCampus3dStore.setState({ hoveredBuilding: name ?? null });
 		},
 		[gl, buildingGroupsRef],
 	);
 
 	const handlePointerOut = useCallback(() => {
 		gl.domElement.style.cursor = "default";
+		useCampus3dStore.setState({ hoveredBuilding: null });
 	}, [gl]);
 
 	return (
@@ -602,7 +652,7 @@ function CampusScene() {
 				<primitive
 					object={model}
 					onClick={handleClick}
-					onPointerOver={handlePointerOver}
+					onPointerMove={handlePointerMove}
 					onPointerOut={handlePointerOut}
 				/>
 			)}
@@ -621,6 +671,9 @@ function CampusScene() {
 
 			{/* 미니맵 렌더 */}
 			<MinimapRenderer />
+
+			{/* 호버 툴팁 — 3D 월드 좌표에 앵커 */}
+			<BuildingHoverTooltip />
 		</>
 	);
 }
