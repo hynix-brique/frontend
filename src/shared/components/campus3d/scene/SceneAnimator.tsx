@@ -27,7 +27,6 @@ export function SceneAnimator({
 	useFrame(() => {
 		const elapsed = Date.now() - startTimeRef.current;
 		const {
-			timeMode,
 			camInputFocused,
 			camXEl,
 			camYEl,
@@ -39,21 +38,11 @@ export function SceneAnimator({
 			controls,
 		} = useCampus3dStore.getState();
 
-		// 시간대 계산
-		let hours: number;
-		if (timeMode === "morning") hours = 10;
-		else if (timeMode === "night") hours = 0;
-		else {
-			const now = new Date();
-			hours = now.getHours() + now.getMinutes() / 60;
-		}
+		const hours = 10; // 아침 고정
 
 		const sky = getSkyParams(hours);
 		if (scene.background instanceof THREE.Color)
 			scene.background.setRGB(sky.r, sky.g, sky.b);
-		if (scene.fog instanceof THREE.FogExp2)
-			scene.fog.color.setRGB(sky.r, sky.g, sky.b);
-
 		const lights = lightsRef.current;
 		if (lights.ambient) lights.ambient.intensity = sky.ambientIntensity;
 		if (lights.dirLight) {

@@ -36,7 +36,6 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 				loadProgress: 0,
 				focusBuilding: "",
 				warningBuildings: [],
-				timeMode: "morning",
 			});
 		};
 	}, []);

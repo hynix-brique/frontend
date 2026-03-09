@@ -53,7 +53,6 @@ export function CampusScene() {
 	// biome-ignore lint/correctness/useExhaustiveDependencies: scene is stable from useThree
 	useLayoutEffect(() => {
 		scene.background = new THREE.Color(0x345384);
-		scene.fog = new THREE.FogExp2(0x345384, 0.0006);
 		const mmCam = new THREE.OrthographicCamera(-500, 500, 500, -500, 1, 2000);
 		mmCam.up.set(0, 0, 1);
 		mmCam.position.set(CAM_TARGET.x, 800, CAM_TARGET.z);

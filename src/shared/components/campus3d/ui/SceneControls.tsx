@@ -2,17 +2,9 @@ import { useCallback } from "react";
 import * as THREE from "three";
 import { CAM_POS, CAM_TARGET } from "../constants";
 import { useCampus3dStore } from "../store/campus3dStore";
-import type { TimeMode } from "../types";
-
-const TIME_MODES: { value: TimeMode; label: string }[] = [
-	{ value: "morning", label: "아침 (Morning)" },
-	{ value: "auto", label: "실시간 (Realtime)" },
-	{ value: "night", label: "밤 (Night)" },
-];
 
 export function SceneControls() {
 	const buildingNames = useCampus3dStore((s) => s.buildingNames);
-	const timeMode = useCampus3dStore((s) => s.timeMode);
 	const focusBuilding = useCampus3dStore((s) => s.focusBuilding);
 	const warningBuildings = useCampus3dStore((s) => s.warningBuildings);
 
@@ -52,21 +44,6 @@ export function SceneControls() {
 					gap: 10,
 				}}
 			>
-				{/* 시간 모드 */}
-				<select
-					value={timeMode}
-					onChange={(e) =>
-						useCampus3dStore.setState({ timeMode: e.target.value as TimeMode })
-					}
-					style={selectStyle}
-				>
-					{TIME_MODES.map((m) => (
-						<option key={m.value} value={m.value}>
-							{m.label}
-						</option>
-					))}
-				</select>
-
 				{/* 건물 선택 */}
 				<select
 					value={focusBuilding}

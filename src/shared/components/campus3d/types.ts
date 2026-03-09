@@ -18,5 +18,3 @@ export interface SkyParams {
 	moonUp: boolean; // 달이 지평선 위에 있는지 여부
 	moonAngle: number; // 달의 호(arc) 각도 (라디안, 18시 기준 12시간 주기)
 }
-
-export type TimeMode = "morning" | "auto" | "night";

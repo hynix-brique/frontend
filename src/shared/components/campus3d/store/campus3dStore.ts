@@ -1,13 +1,11 @@
 import type * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { create } from "zustand";
-import type { TimeMode } from "../types";
 
 type BuildingBox = { corners: THREE.Vector3[]; center: THREE.Vector3 };
 
 interface Campus3DState {
 	// ── UI 상태 (리렌더 트리거) ──────────────────────────────────────────────
-	timeMode: TimeMode;
 	warningBuildings: string[];
 	buildingNames: string[];
 	focusBuilding: string;
@@ -35,7 +33,6 @@ interface Campus3DState {
 }
 
 export const useCampus3dStore = create<Campus3DState>()(() => ({
-	timeMode: "morning",
 	warningBuildings: [],
 	buildingNames: [],
 	focusBuilding: "",
