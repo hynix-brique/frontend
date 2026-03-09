@@ -15,7 +15,7 @@ import { useCampus3dStore } from "./campus3dStore";
 import { LoadingOverlay } from "./LoadingOverlay";
 import { MinimapOverlay, MinimapRenderer } from "./Minimap";
 import type { TimeMode } from "./types";
-import { use3DModel } from "./use3DModel";
+import { useThreeDModel } from "./useThreeDModel";
 
 /* ============================================================================
  * 상수
@@ -195,7 +195,7 @@ function CampusScene() {
 		warningsRef,
 		warningMeshesRef,
 		setWarningBuildings,
-	} = use3DModel();
+	} = useThreeDModel();
 
 	// warningBuildings 변경 감지 → setWarningBuildings 호출
 	const warningBuildings = useCampus3dStore((s) => s.warningBuildings);

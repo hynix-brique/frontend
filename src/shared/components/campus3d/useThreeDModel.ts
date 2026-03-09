@@ -12,7 +12,7 @@ import { useCampus3dStore } from "./campus3dStore";
  *   - 경고등 위치에 연기 파티클 생성 (scene.add로 직접 추가)
  * 모델 자체는 반환하여 <primitive>로 렌더링한다 (R3F 이벤트 시스템 활용).
  * ============================================================================ */
-export function use3DModel() {
+export function useThreeDModel() {
 	const buildingGroupsRef = useRef<Record<string, THREE.Object3D>>({});
 	const [model, setModel] = useState<THREE.Group | null>(null);
 	const [buildingNames, setBuildingNames] = useState<string[]>([]);
