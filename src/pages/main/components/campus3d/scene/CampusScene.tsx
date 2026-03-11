@@ -3,9 +3,13 @@ import { useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { CAM_TARGET, DEG15, INIT_PHI } from "../constants";
-import { useThreeDModel } from "../data/useThreeDModel";
-import { useCampus3dStore } from "../store/campus3dStore";
+import {
+	CAM_TARGET,
+	DEG15,
+	INIT_PHI,
+} from "@/pages/main/components/campus3d/constants";
+import { useThreeDModel } from "@/pages/main/components/campus3d/data/useThreeDModel";
+import { useCampus3dStore } from "@/pages/main/components/campus3d/store/campus3dStore";
 import { SceneAnimator } from "./SceneAnimator";
 
 const POINTER_THROTTLE_MS = 50;

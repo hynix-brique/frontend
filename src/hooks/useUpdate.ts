@@ -18,7 +18,7 @@ import type {
 	UpdateMutationRequest,
 	UpdateMutationResponse,
 	UpdatePathParams,
-} from "../models/Update.ts";
+} from "@/models/Update.ts";
 
 export const updateMutationKey = () => [{ url: "/api/posts/:id" }] as const;
 

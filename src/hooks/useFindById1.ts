@@ -18,7 +18,7 @@ import { queryOptions, useQuery } from "@tanstack/react-query";
 import type {
 	FindById1PathParams,
 	FindById1QueryResponse,
-} from "../models/FindById1.ts";
+} from "@/models/FindById1.ts";
 
 export const findById1QueryKey = (id: FindById1PathParams["id"]) =>
 	[{ url: "/api/members/:id", params: { id: id } }] as const;

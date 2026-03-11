@@ -17,7 +17,7 @@ import { mutationOptions, useMutation } from "@tanstack/react-query";
 import type {
 	PublishMutationRequest,
 	PublishMutationResponse,
-} from "../models/Publish.ts";
+} from "@/models/Publish.ts";
 
 export const publishMutationKey = () =>
 	[{ url: "/api/notifications/publish" }] as const;

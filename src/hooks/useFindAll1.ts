@@ -15,7 +15,7 @@ import type {
 	UseQueryResult,
 } from "@tanstack/react-query";
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import type { FindAll1QueryResponse } from "../models/FindAll1.ts";
+import type { FindAll1QueryResponse } from "@/models/FindAll1.ts";
 
 export const findAll1QueryKey = () => [{ url: "/api/members" }] as const;
 

@@ -15,7 +15,7 @@ import type {
 	UseSuspenseQueryResult,
 } from "@tanstack/react-query";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
-import type { FindAllQueryResponse } from "../models/FindAll.ts";
+import type { FindAllQueryResponse } from "@/models/FindAll.ts";
 
 export const findAllSuspenseQueryKey = () => [{ url: "/api/posts" }] as const;
 

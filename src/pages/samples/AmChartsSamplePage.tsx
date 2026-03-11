@@ -1,10 +1,10 @@
 import { Card, Col, Row, Typography } from "antd";
-import AmChartsBarChart from "../../shared/components/amcharts/AmChartsBarChart";
-import AmChartsBarLineChart from "../../shared/components/amcharts/AmChartsBarLineChart";
-import AmChartsLineChart from "../../shared/components/amcharts/AmChartsLineChart";
-import AmChartsLineDualAxisChart from "../../shared/components/amcharts/AmChartsLineDualAxisChart";
-import AmChartsMultiLineChart from "../../shared/components/amcharts/AmChartsMultiLineChart";
-import AmChartsPieChart from "../../shared/components/amcharts/AmChartsPieChart";
+import AmChartsBarChart from "@/components/amcharts/AmChartsBarChart";
+import AmChartsBarLineChart from "@/components/amcharts/AmChartsBarLineChart";
+import AmChartsLineChart from "@/components/amcharts/AmChartsLineChart";
+import AmChartsLineDualAxisChart from "@/components/amcharts/AmChartsLineDualAxisChart";
+import AmChartsMultiLineChart from "@/components/amcharts/AmChartsMultiLineChart";
+import AmChartsPieChart from "@/components/amcharts/AmChartsPieChart";
 
 export default function AmChartsSamplePage() {
 	return (

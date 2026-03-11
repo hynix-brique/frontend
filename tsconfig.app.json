@@ -22,7 +22,14 @@
 		"noUnusedParameters": true,
 		"erasableSyntaxOnly": true,
 		"noFallthroughCasesInSwitch": true,
-		"noUncheckedSideEffectImports": true
+		"noUncheckedSideEffectImports": true,
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["src/*"],
+			"@modules/*": ["src/models/*"],
+			"@layouts/*": ["src/layouts/*"],
+			"@hooks/*": ["src/hooks/*"]
+		}
 	},
 	"include": ["src"]
 }

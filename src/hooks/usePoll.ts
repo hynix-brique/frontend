@@ -15,7 +15,7 @@ import type {
 	UseQueryResult,
 } from "@tanstack/react-query";
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import type { PollQueryParams, PollQueryResponse } from "../models/Poll.ts";
+import type { PollQueryParams, PollQueryResponse } from "@/models/Poll.ts";
 
 export const pollQueryKey = (params: PollQueryParams = {}) =>
 	[{ url: "/api/notifications/poll" }, ...(params ? [params] : [])] as const;

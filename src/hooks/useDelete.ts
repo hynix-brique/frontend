@@ -17,7 +17,7 @@ import { mutationOptions, useMutation } from "@tanstack/react-query";
 import type {
 	DeleteMutationResponse,
 	DeletePathParams,
-} from "../models/Delete.ts";
+} from "@/models/Delete.ts";
 
 export const deleteMutationKey = () => [{ url: "/api/posts/:id" }] as const;
 

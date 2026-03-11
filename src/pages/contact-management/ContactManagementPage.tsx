@@ -6,7 +6,7 @@ import {
 import { AgGridReact } from "ag-grid-react";
 import { Button, Form, notification, Select, Space, Typography } from "antd";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { TextField } from "../../shared/lib/antd";
+import { TextField } from "@/lib/antd";
 import { generateContactData } from "./sampleData";
 import { type ContactRecord, contactColumns } from "./types";
 

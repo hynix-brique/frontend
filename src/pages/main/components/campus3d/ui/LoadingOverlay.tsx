@@ -1,5 +1,5 @@
-import { Spin } from "../../../../../shared/lib/antd";
-import { useCampus3dStore } from "../store/campus3dStore";
+import { Spin } from "@/lib/antd";
+import { useCampus3dStore } from "@/pages/main/components/campus3d/store/campus3dStore";
 
 export function LoadingOverlay() {
 	const loading = useCampus3dStore((s) => s.loading);

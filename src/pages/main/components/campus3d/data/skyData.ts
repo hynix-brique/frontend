@@ -1,4 +1,4 @@
-import type { SkyParams } from "../types";
+import type { SkyParams } from "@/pages/main/components/campus3d/types";
 
 /* ============================================================================
  * Sky & Lighting System

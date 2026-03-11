@@ -17,7 +17,7 @@ import { mutationOptions, useMutation } from "@tanstack/react-query";
 import type {
 	CreateMutationRequest,
 	CreateMutationResponse,
-} from "../models/Create.ts";
+} from "@/models/Create.ts";
 
 export const createMutationKey = () => [{ url: "/api/posts" }] as const;
 

@@ -18,7 +18,7 @@ import { queryOptions, useQuery } from "@tanstack/react-query";
 import type {
 	FindByIdPathParams,
 	FindByIdQueryResponse,
-} from "../models/FindById.ts";
+} from "@/models/FindById.ts";
 
 export const findByIdQueryKey = (id: FindByIdPathParams["id"]) =>
 	[{ url: "/api/posts/:id", params: { id: id } }] as const;

@@ -15,7 +15,7 @@ import type {
 	UseSuspenseQueryResult,
 } from "@tanstack/react-query";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
-import type { PollQueryParams, PollQueryResponse } from "../models/Poll.ts";
+import type { PollQueryParams, PollQueryResponse } from "@/models/Poll.ts";
 
 export const pollSuspenseQueryKey = (params: PollQueryParams = {}) =>
 	[{ url: "/api/notifications/poll" }, ...(params ? [params] : [])] as const;

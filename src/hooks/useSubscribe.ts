@@ -15,7 +15,7 @@ import type {
 	UseQueryResult,
 } from "@tanstack/react-query";
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import type { SubscribeQueryResponse } from "../models/Subscribe.ts";
+import type { SubscribeQueryResponse } from "@/models/Subscribe.ts";
 
 export const subscribeQueryKey = () =>
 	[{ url: "/api/notifications/subscribe" }] as const;

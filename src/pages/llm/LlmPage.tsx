@@ -1,6 +1,6 @@
 import { Button, Card, List, Space, Typography } from "antd";
 import { useState } from "react";
-import { TextField } from "../../shared/lib/antd";
+import { TextField } from "@/lib/antd";
 
 const { TextArea } = TextField;
 

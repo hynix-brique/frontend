@@ -15,7 +15,7 @@ import type {
 	UseSuspenseQueryResult,
 } from "@tanstack/react-query";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
-import type { SubscribeQueryResponse } from "../models/Subscribe.ts";
+import type { SubscribeQueryResponse } from "@/models/Subscribe.ts";
 
 export const subscribeSuspenseQueryKey = () =>
 	[{ url: "/api/notifications/subscribe" }] as const;

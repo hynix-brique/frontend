@@ -1,10 +1,10 @@
 import { Card, Col, Row, Typography } from "antd";
-import EChartsBarChart from "../../shared/components/echarts/EChartsBarChart";
-import EChartsBarLineChart from "../../shared/components/echarts/EChartsBarLineChart";
-import EChartsLineChart from "../../shared/components/echarts/EChartsLineChart";
-import EChartsLineDualAxisChart from "../../shared/components/echarts/EChartsLineDualAxisChart";
-import EChartsMultiLineChart from "../../shared/components/echarts/EChartsMultiLineChart";
-import EChartsPieChart from "../../shared/components/echarts/EChartsPieChart";
+import EChartsBarChart from "@/components/echarts/EChartsBarChart";
+import EChartsBarLineChart from "@/components/echarts/EChartsBarLineChart";
+import EChartsLineChart from "@/components/echarts/EChartsLineChart";
+import EChartsLineDualAxisChart from "@/components/echarts/EChartsLineDualAxisChart";
+import EChartsMultiLineChart from "@/components/echarts/EChartsMultiLineChart";
+import EChartsPieChart from "@/components/echarts/EChartsPieChart";
 
 export default function EChartsSamplePage() {
 	return (

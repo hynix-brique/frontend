@@ -1,7 +1,10 @@
 import { useCallback } from "react";
 import * as THREE from "three";
-import { CAM_POS, CAM_TARGET } from "../constants";
-import { useCampus3dStore } from "../store/campus3dStore";
+import {
+	CAM_POS,
+	CAM_TARGET,
+} from "@/pages/main/components/campus3d/constants";
+import { useCampus3dStore } from "@/pages/main/components/campus3d/store/campus3dStore";
 
 export function SceneControls() {
 	const buildingNames = useCampus3dStore((s) => s.buildingNames);
