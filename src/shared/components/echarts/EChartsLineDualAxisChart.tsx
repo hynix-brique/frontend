@@ -61,6 +61,13 @@ export default function EChartsLineDualAxisChart() {
 					smooth: true,
 					lineStyle: { color: "#5470c6", width: 2 },
 					itemStyle: { color: "#5470c6" },
+					label: {
+						show: true,
+						position: "top",
+						formatter: "{c}°C",
+						fontSize: 11,
+						color: "#5470c6",
+					},
 				},
 				{
 					name: "전력소비(kWh)",
@@ -70,6 +77,13 @@ export default function EChartsLineDualAxisChart() {
 					smooth: true,
 					lineStyle: { color: "#ee6666", width: 2 },
 					itemStyle: { color: "#ee6666" },
+					label: {
+						show: true,
+						position: "bottom",
+						formatter: "{c}",
+						fontSize: 11,
+						color: "#ee6666",
+					},
 				},
 			],
 		});

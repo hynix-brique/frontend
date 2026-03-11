@@ -91,6 +91,21 @@ export default function AmChartsMultiLineChart() {
 					}),
 				}),
 			);
+			const labelDy = i % 2 === 0 ? -10 : 10;
+			const labelCenterY = i % 2 === 0 ? am5.percent(100) : am5.percent(0);
+			series.bullets.push(() =>
+				am5.Bullet.new(root, {
+					sprite: am5.Label.new(root, {
+						text: "{valueY}",
+						fill: am5.color(cfg.color),
+						centerX: am5.percent(50),
+						centerY: labelCenterY,
+						dy: labelDy,
+						fontSize: 10,
+						populateText: true,
+					}),
+				}),
+			);
 			series.data.setAll(data);
 		}
 

@@ -91,6 +91,12 @@ export default function EChartsMultiLineChart() {
 					smooth: true,
 					lineStyle: { color: "#ee6666", width: 2 },
 					itemStyle: { color: "#ee6666" },
+					label: {
+						show: true,
+						position: "top",
+						fontSize: 10,
+						color: "#ee6666",
+					},
 				},
 				{
 					name: "기압(hPa)",
@@ -100,6 +106,12 @@ export default function EChartsMultiLineChart() {
 					smooth: true,
 					lineStyle: { color: "#5470c6", width: 2 },
 					itemStyle: { color: "#5470c6" },
+					label: {
+						show: true,
+						position: "bottom",
+						fontSize: 10,
+						color: "#5470c6",
+					},
 				},
 				{
 					name: "습도(%)",
@@ -109,6 +121,12 @@ export default function EChartsMultiLineChart() {
 					smooth: true,
 					lineStyle: { color: "#91cc75", width: 2 },
 					itemStyle: { color: "#91cc75" },
+					label: {
+						show: true,
+						position: "top",
+						fontSize: 10,
+						color: "#91cc75",
+					},
 				},
 				{
 					name: "CO₂(ppm)",
@@ -118,6 +136,12 @@ export default function EChartsMultiLineChart() {
 					smooth: true,
 					lineStyle: { color: "#fac858", width: 2 },
 					itemStyle: { color: "#fac858" },
+					label: {
+						show: true,
+						position: "bottom",
+						fontSize: 10,
+						color: "#fac858",
+					},
 				},
 			],
 		});

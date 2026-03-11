@@ -81,6 +81,19 @@ export default function AmChartsLineDualAxisChart() {
 				sprite: am5.Circle.new(root, { radius: 4, fill: am5.color(0x5470c6) }),
 			}),
 		);
+		tempSeries.bullets.push(() =>
+			am5.Bullet.new(root, {
+				sprite: am5.Label.new(root, {
+					text: "{valueY}°C",
+					fill: am5.color(0x5470c6),
+					centerX: am5.percent(50),
+					centerY: am5.percent(100),
+					dy: -10,
+					fontSize: 11,
+					populateText: true,
+				}),
+			}),
+		);
 		tempSeries.data.setAll(data);
 
 		// 전력소비 라인 시리즈
@@ -99,6 +112,19 @@ export default function AmChartsLineDualAxisChart() {
 		powerSeries.bullets.push(() =>
 			am5.Bullet.new(root, {
 				sprite: am5.Circle.new(root, { radius: 4, fill: am5.color(0xee6666) }),
+			}),
+		);
+		powerSeries.bullets.push(() =>
+			am5.Bullet.new(root, {
+				sprite: am5.Label.new(root, {
+					text: "{valueY}",
+					fill: am5.color(0xee6666),
+					centerX: am5.percent(50),
+					centerY: am5.percent(0),
+					dy: 10,
+					fontSize: 11,
+					populateText: true,
+				}),
 			}),
 		);
 		powerSeries.data.setAll(data);
