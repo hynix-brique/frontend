@@ -44,9 +44,9 @@ export function useThreeDModel() {
 				if (!(child as THREE.Mesh).isMesh) return;
 				const mesh = child as THREE.Mesh;
 				if (!mesh.material || !("emissive" in mesh.material)) return;
-				if (!mesh.userData._matCloned && !mesh.userData._warnMatCloned) {
+				if (!mesh.userData._matCloned) {
 					mesh.material = (mesh.material as THREE.Material).clone();
-					mesh.userData._warnMatCloned = true;
+					mesh.userData._matCloned = true;
 				}
 				const mat = mesh.material as THREE.MeshStandardMaterial;
 				warningOrigMapRef.current.set(mesh, {
@@ -80,27 +80,26 @@ export function useThreeDModel() {
 
 				const skipNames = new Set(["Scene", "Ground"]);
 				gltfModel.traverse((child) => {
+					if (child === gltfModel) return;
+
+					// 그룹 노드 → 건물 그룹 수집
 					if (
-						child !== gltfModel &&
 						child.name &&
 						!(child as THREE.Mesh).isMesh &&
 						!skipNames.has(child.name)
 					) {
 						buildingGroups[child.name] = child;
 					}
-				});
 
-				gltfModel.traverse((child) => {
+					// 메시 노드 → shadow 설정 + 경고등 분류
 					if ((child as THREE.Mesh).isMesh) {
 						const mesh = child as THREE.Mesh;
 						mesh.castShadow = true;
 						mesh.receiveShadow = true;
 						if (mesh.material) {
-							const mat = mesh.material as THREE.Material & {
-								name?: string;
-							};
-							const mname = (mat.name ?? "").toLowerCase();
-							if (mname.startsWith("wrn")) warnings.push(mesh);
+							const mat = mesh.material as THREE.Material & { name?: string };
+							if ((mat.name ?? "").toLowerCase().startsWith("wrn"))
+								warnings.push(mesh);
 						}
 					}
 				});

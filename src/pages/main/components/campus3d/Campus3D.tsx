@@ -5,7 +5,6 @@ import { CAM_POS } from "./constants";
 import { CampusScene } from "./scene/CampusScene";
 import { useCampus3dStore } from "./store/campus3dStore";
 import { LoadingOverlay } from "./ui/LoadingOverlay";
-import { MinimapOverlay } from "./ui/Minimap";
 import { SceneControls } from "./ui/SceneControls";
 
 export interface Campus3DRef {
@@ -19,12 +18,10 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 			useCampus3dStore.setState({
 				camera: null,
 				controls: null,
-				minimapCamera: null,
 				buildingGroups: {},
 				buildingBoxes: {},
 				buildingNames: [],
 				containerEl: null,
-				minimap2dEl: null,
 				camXEl: null,
 				camYEl: null,
 				camZEl: null,
@@ -72,7 +69,6 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 
 			<LoadingOverlay />
 			<SceneControls />
-			<MinimapOverlay />
 
 			<style>{`
         @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }

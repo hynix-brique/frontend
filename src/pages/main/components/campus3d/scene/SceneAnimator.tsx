@@ -4,6 +4,13 @@ import { ANGLE_STEP } from "../constants";
 import { getSkyParams } from "../data/skyData";
 import { useCampus3dStore } from "../store/campus3dStore";
 
+// 매 프레임 Vector3/Spherical 재생성을 막기 위한 모듈 스코프 싱글턴
+const _snapOffset = new THREE.Vector3();
+const _sph = new THREE.Spherical();
+
+// hours=10 고정값이므로 결과도 불변 — 매 프레임 재계산 불필요
+const _sky = getSkyParams(10);
+
 export interface SceneAnimatorProps {
 	warningsRef: React.MutableRefObject<THREE.Mesh[]>;
 	warningMeshesRef: React.MutableRefObject<THREE.Mesh[]>;
@@ -36,16 +43,13 @@ export function SceneAnimator({
 			controls,
 		} = useCampus3dStore.getState();
 
-		const hours = 10; // 아침 고정
-
-		const sky = getSkyParams(hours);
 		const lights = lightsRef.current;
-		if (lights.ambient) lights.ambient.intensity = sky.ambientIntensity;
+		if (lights.ambient) lights.ambient.intensity = _sky.ambientIntensity;
 		if (lights.dirLight) {
-			lights.dirLight.intensity = sky.dirIntensity;
-			lights.dirLight.color.setHex(sky.dirColor);
+			lights.dirLight.intensity = _sky.dirIntensity;
+			lights.dirLight.color.setHex(_sky.dirColor);
 		}
-		gl.toneMappingExposure = sky.exposure;
+		gl.toneMappingExposure = _sky.exposure;
 
 		// 경고등 점멸
 		for (const mesh of warningsRef.current) {
@@ -62,38 +66,41 @@ export function SceneAnimator({
 				0.05 + ((Math.sin(elapsed * 0.005) + 1) / 2) * 0.75;
 		}
 
-		// 카메라 각도 스냅
+		// 카메라 각도 스냅 (싱글턴 재사용)
 		if (controls && !camInputFocused) {
 			const cam = camera as THREE.PerspectiveCamera;
-			const snapOffset = new THREE.Vector3().subVectors(
-				cam.position,
-				controls.target,
-			);
-			const sph = new THREE.Spherical().setFromVector3(snapOffset);
-			sph.theta = Math.round(sph.theta / ANGLE_STEP) * ANGLE_STEP;
-			sph.phi = Math.round(sph.phi / ANGLE_STEP) * ANGLE_STEP;
-			sph.phi = Math.max(
+			_snapOffset.subVectors(cam.position, controls.target);
+			_sph.setFromVector3(_snapOffset);
+			_sph.theta = Math.round(_sph.theta / ANGLE_STEP) * ANGLE_STEP;
+			_sph.phi = Math.round(_sph.phi / ANGLE_STEP) * ANGLE_STEP;
+			_sph.phi = Math.max(
 				controls.minPolarAngle,
-				Math.min(controls.maxPolarAngle, sph.phi),
+				Math.min(controls.maxPolarAngle, _sph.phi),
 			);
-			snapOffset.setFromSpherical(sph);
-			cam.position.copy(controls.target).add(snapOffset);
+			_snapOffset.setFromSpherical(_sph);
+			cam.position.copy(controls.target).add(_snapOffset);
 			cam.lookAt(controls.target);
 		}
 
-		// 카메라 입력창 갱신
+		// 카메라 입력창 갱신 — 값이 바뀔 때만 DOM write
 		if (controls && !camInputFocused) {
 			const cam = camera as THREE.PerspectiveCamera;
-			if (camXEl) camXEl.value = Math.round(cam.position.x).toString();
-			if (camYEl) camYEl.value = Math.round(cam.position.y).toString();
-			if (camZEl) camZEl.value = Math.round(cam.position.z).toString();
-			if (camDEl)
-				camDEl.value = Math.round(
-					cam.position.distanceTo(controls.target),
-				).toString();
-			if (tgtXEl) tgtXEl.value = Math.round(controls.target.x).toString();
-			if (tgtYEl) tgtYEl.value = Math.round(controls.target.y).toString();
-			if (tgtZEl) tgtZEl.value = Math.round(controls.target.z).toString();
+			const rx = Math.round(cam.position.x).toString();
+			const ry = Math.round(cam.position.y).toString();
+			const rz = Math.round(cam.position.z).toString();
+			const rd = Math.round(
+				cam.position.distanceTo(controls.target),
+			).toString();
+			const tx = Math.round(controls.target.x).toString();
+			const ty = Math.round(controls.target.y).toString();
+			const tz = Math.round(controls.target.z).toString();
+			if (camXEl && camXEl.value !== rx) camXEl.value = rx;
+			if (camYEl && camYEl.value !== ry) camYEl.value = ry;
+			if (camZEl && camZEl.value !== rz) camZEl.value = rz;
+			if (camDEl && camDEl.value !== rd) camDEl.value = rd;
+			if (tgtXEl && tgtXEl.value !== tx) tgtXEl.value = tx;
+			if (tgtYEl && tgtYEl.value !== ty) tgtYEl.value = ty;
+			if (tgtZEl && tgtZEl.value !== tz) tgtZEl.value = tz;
 		}
 	});
 

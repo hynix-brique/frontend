@@ -15,13 +15,11 @@ interface Campus3DState {
 	// ── Three.js 오브젝트 (CampusScene이 마운트 후 채움) ────────────────────
 	camera: THREE.PerspectiveCamera | null;
 	controls: OrbitControlsImpl | null;
-	minimapCamera: THREE.OrthographicCamera | null;
 	buildingGroups: Record<string, THREE.Object3D>;
 	buildingBoxes: Record<string, BuildingBox>;
 
 	// ── DOM 요소 (Campus3D HTML 컴포넌트가 채움, useFrame에서 직접 갱신) ────
 	containerEl: HTMLDivElement | null;
-	minimap2dEl: HTMLCanvasElement | null;
 	camInputFocused: boolean;
 	camXEl: HTMLInputElement | null;
 	camYEl: HTMLInputElement | null;
@@ -41,12 +39,10 @@ export const useCampus3dStore = create<Campus3DState>()(() => ({
 
 	camera: null,
 	controls: null,
-	minimapCamera: null,
 	buildingGroups: {},
 	buildingBoxes: {},
 
 	containerEl: null,
-	minimap2dEl: null,
 	camInputFocused: false,
 	camXEl: null,
 	camYEl: null,

@@ -14,6 +14,7 @@ export function SceneControls() {
 		const { controls, buildingGroups } = useCampus3dStore.getState();
 		const group = buildingGroups[name];
 		if (!group || !controls) return;
+		group.updateWorldMatrix(true, true);
 		const box = new THREE.Box3().setFromObject(group);
 		const center = new THREE.Vector3();
 		box.getCenter(center);

@@ -6,9 +6,9 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { CAM_TARGET, DEG15, INIT_PHI } from "../constants";
 import { useThreeDModel } from "../data/useThreeDModel";
 import { useCampus3dStore } from "../store/campus3dStore";
-import { MinimapRenderer } from "../ui/Minimap";
 import { SceneAnimator } from "./SceneAnimator";
 
+const POINTER_THROTTLE_MS = 50;
 const SKIP_NAMES = new Set(["Scene", "Ground"]);
 
 function findBuildingName(
@@ -31,6 +31,7 @@ export function CampusScene() {
 		dirLight: THREE.DirectionalLight | null;
 	}>({ ambient: null, dirLight: null });
 	const startTimeRef = useRef(Date.now());
+	const lastPointerMoveRef = useRef(0);
 
 	const {
 		model,
@@ -47,15 +48,10 @@ export function CampusScene() {
 		setWarningBuildings(warningBuildings);
 	}, [warningBuildings, setWarningBuildings]);
 
-	// 씬 배경/안개 + 미니맵 카메라 초기화
+	// 씬 배경 초기화
 	// biome-ignore lint/correctness/useExhaustiveDependencies: scene is stable from useThree
 	useLayoutEffect(() => {
 		scene.background = new THREE.Color(0xffffff);
-		const mmCam = new THREE.OrthographicCamera(-20, 40, 60, -20, 1, 2000);
-		mmCam.up.set(0, 0, 1);
-		mmCam.position.set(CAM_TARGET.x, 800, CAM_TARGET.z);
-		mmCam.lookAt(CAM_TARGET.x, 0, CAM_TARGET.z);
-		useCampus3dStore.setState({ minimapCamera: mmCam });
 	}, []);
 
 	// 카메라를 스토어에 등록
@@ -96,6 +92,9 @@ export function CampusScene() {
 	const handlePointerMove = useCallback(
 		(e: { stopPropagation: () => void; object: THREE.Object3D }) => {
 			e.stopPropagation();
+			const now = Date.now();
+			if (now - lastPointerMoveRef.current < POINTER_THROTTLE_MS) return;
+			lastPointerMoveRef.current = now;
 			const name = findBuildingName(e.object, buildingGroupsRef.current);
 			gl.domElement.style.cursor = name ? "pointer" : "default";
 		},
@@ -166,9 +165,6 @@ export function CampusScene() {
 				lightsRef={lightsRef}
 				startTimeRef={startTimeRef}
 			/>
-
-			{/* 미니맵 렌더 */}
-			<MinimapRenderer />
 		</>
 	);
 }
