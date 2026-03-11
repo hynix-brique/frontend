@@ -265,21 +265,13 @@ export default function AlarmPanel() {
 	const [activeTab, setActiveTab] = useState("alarm");
 
 	return (
-		<div
-			style={{
-				width: 300,
-				flexShrink: 0,
-				height: "calc(100vh - 64px)",
-				overflowY: "auto",
-				background: "#fafafa",
-				borderLeft: "1px solid #e8e8e8",
-			}}
-		>
+		<div style={{ height: "100%", overflowY: "auto" }}>
 			<Tabs
 				activeKey={activeTab}
 				onChange={setActiveTab}
 				size="small"
 				style={{ padding: "0 10px" }}
+				destroyInactiveTabPane
 				items={[
 					{
 						key: "alarm",

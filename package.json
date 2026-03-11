@@ -16,6 +16,7 @@
 	},
 	"dependencies": {
 		"@amcharts/amcharts5": "^5.15.6",
+		"@ant-design/icons": "^6.1.0",
 		"@kubb/plugin-client": "^4.29.0",
 		"@react-three/drei": "^9.122.0",
 		"@react-three/fiber": "^8.18.0",

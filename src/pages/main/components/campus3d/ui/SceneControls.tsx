@@ -6,6 +6,16 @@ import {
 } from "@/pages/main/components/campus3d/constants";
 import { useCampus3dStore } from "@/pages/main/components/campus3d/store/campus3dStore";
 
+export function resetCameraView() {
+	const { camera: cam, controls } = useCampus3dStore.getState();
+	if (cam) cam.position.copy(CAM_POS);
+	if (controls) {
+		controls.target.copy(CAM_TARGET);
+		controls.update();
+	}
+	useCampus3dStore.setState({ focusBuilding: "" });
+}
+
 export function SceneControls() {
 	const buildingNames = useCampus3dStore((s) => s.buildingNames);
 	const focusBuilding = useCampus3dStore((s) => s.focusBuilding);
@@ -25,27 +35,26 @@ export function SceneControls() {
 		controls.update();
 	}, []);
 
-	const handleReset = useCallback(() => {
-		const { camera: cam, controls } = useCampus3dStore.getState();
-		if (cam) cam.position.copy(CAM_POS);
-		if (controls) {
-			controls.target.copy(CAM_TARGET);
-			controls.update();
-		}
-		useCampus3dStore.setState({ focusBuilding: "" });
-	}, []);
-
 	return (
-		<>
-			{/* 상단 좌측 컨트롤 */}
+		<div
+			style={{
+				display: "flex",
+				alignItems: "center",
+				gap: 10,
+				padding: "8px 12px",
+				background: "rgba(10,10,20,0.92)",
+				flexShrink: 0,
+				flexWrap: "wrap",
+			}}
+		>
+			{/* 컨트롤 */}
 			<div
 				style={{
-					position: "absolute",
-					top: 20,
-					left: 24,
-					zIndex: 100,
 					display: "flex",
 					gap: 10,
+					flex: 1,
+					flexWrap: "wrap",
+					alignItems: "center",
 				}}
 			>
 				{/* 건물 선택 */}
@@ -259,22 +268,7 @@ export function SceneControls() {
 					))}
 				</select>
 			</div>
-
-			{/* Reset 버튼 */}
-			<button
-				type="button"
-				onClick={handleReset}
-				style={{
-					position: "absolute",
-					top: 20,
-					right: 24,
-					zIndex: 100,
-					...buttonStyle,
-				}}
-			>
-				&#8634; Reset
-			</button>
-		</>
+		</div>
 	);
 }
 
@@ -318,17 +312,4 @@ const inputStyle: React.CSSProperties = {
 	outline: "none",
 	padding: "8px 0",
 	MozAppearance: "textfield",
-};
-
-const buttonStyle: React.CSSProperties = {
-	background: "rgba(10,10,20,0.85)",
-	color: "#ddd",
-	border: "1px solid rgba(255,255,255,0.12)",
-	borderRadius: 8,
-	padding: "8px 14px",
-	fontSize: 13,
-	fontFamily: "'Noto Sans KR', sans-serif",
-	backdropFilter: "blur(12px)",
-	cursor: "pointer",
-	outline: "none",
 };

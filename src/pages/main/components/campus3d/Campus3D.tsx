@@ -45,29 +45,39 @@ const Campus3D = forwardRef<Campus3DRef>(function Campus3D(_, ref) {
 
 	return (
 		<div
-			ref={(el) => useCampus3dStore.setState({ containerEl: el })}
-			style={{ width: "100%", height: "100%", position: "relative" }}
+			style={{
+				width: "100%",
+				height: "100%",
+				display: "flex",
+				flexDirection: "column",
+			}}
 		>
-			<Canvas
-				frameloop="always"
-				camera={{
-					fov: 45,
-					position: CAM_POS.toArray() as [number, number, number],
-					near: 1,
-					far: 5000,
-				}}
-				shadows
-				gl={{
-					antialias: true,
-					toneMapping: THREE.ACESFilmicToneMapping,
-					toneMappingExposure: 1.6,
-				}}
-				style={{ width: "100%", height: "100%" }}
+			<div
+				ref={(el) => useCampus3dStore.setState({ containerEl: el })}
+				style={{ flex: 1, position: "relative", minHeight: 0 }}
 			>
-				<CampusScene />
-			</Canvas>
+				<Canvas
+					frameloop="always"
+					camera={{
+						fov: 45,
+						position: CAM_POS.toArray() as [number, number, number],
+						near: 1,
+						far: 5000,
+					}}
+					shadows
+					gl={{
+						antialias: true,
+						toneMapping: THREE.ACESFilmicToneMapping,
+						toneMappingExposure: 1.6,
+					}}
+					style={{ width: "100%", height: "100%" }}
+				>
+					<CampusScene />
+				</Canvas>
 
-			<LoadingOverlay />
+				<LoadingOverlay />
+			</div>
+
 			<SceneControls />
 
 			<style>{`
