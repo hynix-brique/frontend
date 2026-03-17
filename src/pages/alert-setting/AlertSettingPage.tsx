@@ -18,6 +18,7 @@ import {
 	categoryColumns,
 	detailColumns,
 	propertyColumns,
+	type RecipientRecord,
 	recipientColumns,
 } from "./types";
 
@@ -39,6 +40,9 @@ export default function AlertSettingPage() {
 
 	const categories = useMemo(() => generateCategories(), []);
 	const [selectedId, setSelectedId] = useState<number | null>(null);
+	const [selectedRecipientId, setSelectedRecipientId] = useState<number | null>(
+		null,
+	);
 
 	const properties = useMemo(
 		() => (selectedId ? generateProperties(selectedId) : []),
@@ -49,14 +53,23 @@ export default function AlertSettingPage() {
 		[selectedId],
 	);
 	const details = useMemo(
-		() => (selectedId ? generateDetails(selectedId) : []),
-		[selectedId],
+		() => (selectedRecipientId ? generateDetails(selectedRecipientId) : []),
+		[selectedRecipientId],
 	);
 
 	const onCategoryRowClicked = useCallback(
 		(event: RowClickedEvent<CategoryRecord>) => {
 			if (event.data) {
 				setSelectedId(event.data.id);
+			}
+		},
+		[],
+	);
+
+	const onRecipientRowClicked = useCallback(
+		(event: RowClickedEvent<RecipientRecord>) => {
+			if (event.data) {
+				setSelectedRecipientId(event.data.id);
 			}
 		},
 		[],
@@ -158,6 +171,8 @@ export default function AlertSettingPage() {
 						<AgGridReact
 							rowData={recipients}
 							columnDefs={recipientColumns}
+							rowSelection="single"
+							onRowClicked={onRecipientRowClicked}
 							getRowId={(p) => p.data.id.toString()}
 							singleClickEdit={true}
 						/>
