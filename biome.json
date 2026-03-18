@@ -15,7 +15,8 @@
 			"!!src/models",
 			"!!src/zod",
 			"!!src/hooks",
-			"!!src/schemas"
+			"!!src/schemas",
+			"!!src/api"
 		]
 	},
 	"formatter": {
