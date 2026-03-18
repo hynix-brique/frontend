@@ -9,7 +9,7 @@ import {
 	Typography,
 } from "antd";
 import { useMemo, useState } from "react";
-import { type Alarm, useAlarms } from "../../../api/hooks/useAlarms";
+import { type Alarm, useAlarms } from "../../../mocks/api/hooks/useAlarms";
 import TrendPanel from "./TrendPanel";
 
 type AlarmState = "error" | "warning" | "normal";

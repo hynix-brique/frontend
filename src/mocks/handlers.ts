@@ -1,5 +1,5 @@
 import { HttpResponse, http } from "msw";
-import type { Alarm } from "../api/hooks/useAlarms";
+import type { Alarm } from "./api/hooks/useAlarms";
 
 const SAMPLE_ALARMS: Alarm[] = [
 	{
