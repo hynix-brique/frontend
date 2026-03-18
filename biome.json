@@ -13,9 +13,6 @@
 			"!!public",
 			"!!src/.kubb",
 			"!!src/models",
-			"!!src/zod",
-			"!!src/hooks",
-			"!!src/schemas",
 			"!!src/api"
 		]
 	},
