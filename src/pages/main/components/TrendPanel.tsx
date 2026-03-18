@@ -1,18 +1,9 @@
 import { Typography } from "antd";
 import * as echarts from "echarts";
-import { useEffect, useRef, useState } from "react";
-
-// ── 데이터 타입 ──────────────────────────────────────────────────────────────
-
-type SimpleChartData = { labels: string[]; values: number[] };
-
-type QueueSavingData = {
-	labels: string[];
-	saved: number[];
-	potential: number[];
-	target: number[];
-	baseline: number[];
-};
+import { useEffect, useRef } from "react";
+import { useOhtUsageMetrics } from "../../../mocks/api/hooks/useOhtUsageMetrics";
+import { useTransferCancelMetrics } from "../../../mocks/api/hooks/useTransferCancelMetrics";
+import { useTransferStoreMetrics } from "../../../mocks/api/hooks/useTransferStoreMetrics";
 
 // ── 공통 차트 래퍼 ────────────────────────────────────────────────────────────
 
@@ -32,13 +23,7 @@ function ChartTitle({ children }: { children: React.ReactNode }) {
 function CanceledQueueChart({ isActive }: { isActive: boolean }) {
 	const chartRef = useRef<HTMLDivElement>(null);
 	const instanceRef = useRef<echarts.ECharts | null>(null);
-	const [data, setData] = useState<SimpleChartData | null>(null);
-
-	useEffect(() => {
-		fetch("/trend-canceled-queue.json")
-			.then((r) => r.json())
-			.then(setData);
-	}, []);
+	const { data } = useTransferCancelMetrics();
 
 	useEffect(() => {
 		if (!chartRef.current || !data) return;
@@ -84,13 +69,7 @@ function CanceledQueueChart({ isActive }: { isActive: boolean }) {
 function OhtUsageChart({ isActive }: { isActive: boolean }) {
 	const chartRef = useRef<HTMLDivElement>(null);
 	const instanceRef = useRef<echarts.ECharts | null>(null);
-	const [data, setData] = useState<SimpleChartData | null>(null);
-
-	useEffect(() => {
-		fetch("/trend-oht-usage.json")
-			.then((r) => r.json())
-			.then(setData);
-	}, []);
+	const { data } = useOhtUsageMetrics();
 
 	useEffect(() => {
 		if (!chartRef.current || !data) return;
@@ -136,13 +115,7 @@ function OhtUsageChart({ isActive }: { isActive: boolean }) {
 function QueueSavingChart({ isActive }: { isActive: boolean }) {
 	const chartRef = useRef<HTMLDivElement>(null);
 	const instanceRef = useRef<echarts.ECharts | null>(null);
-	const [data, setData] = useState<QueueSavingData | null>(null);
-
-	useEffect(() => {
-		fetch("/trend-queue-saving.json")
-			.then((r) => r.json())
-			.then(setData);
-	}, []);
+	const { data } = useTransferStoreMetrics();
 
 	useEffect(() => {
 		if (!chartRef.current || !data) return;

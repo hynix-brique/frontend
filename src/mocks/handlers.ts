@@ -1,5 +1,8 @@
 import { HttpResponse, http } from "msw";
 import type { Alarm } from "./api/hooks/useAlarms";
+import type { OhtUsageMetrics } from "./api/hooks/useOhtUsageMetrics";
+import type { TransferCancelMetrics } from "./api/hooks/useTransferCancelMetrics";
+import type { TransferStoreMetrics } from "./api/hooks/useTransferStoreMetrics";
 
 const SAMPLE_ALARMS: Alarm[] = [
 	{
@@ -60,8 +63,62 @@ const SAMPLE_ALARMS: Alarm[] = [
 	},
 ];
 
+const SAMPLE_OHT_USAGE_METRICS: OhtUsageMetrics = {
+	labels: [
+		"Bay-A",
+		"Bay-B",
+		"Bay-C",
+		"Bay-D",
+		"Bay-E",
+		"Bay-F",
+		"Bay-G",
+		"Bay-H",
+	],
+	values: [72, 85, 91, 78, 88, 65, 79, 83],
+};
+
+const SAMPLE_TRANSFER_CANCEL_METRICS: TransferCancelMetrics = {
+	labels: [
+		"Bay-A",
+		"Bay-B",
+		"Bay-C",
+		"Bay-D",
+		"Bay-E",
+		"Bay-F",
+		"Bay-G",
+		"Bay-H",
+	],
+	values: [3, 7, 5, 12, 8, 4, 6, 9],
+};
+
+const SAMPLE_TRANSFER_STORE_METRICS: TransferStoreMetrics = {
+	labels: [
+		"Bay-A",
+		"Bay-B",
+		"Bay-C",
+		"Bay-D",
+		"Bay-E",
+		"Bay-F",
+		"Bay-G",
+		"Bay-H",
+	],
+	saved: [120, 95, 140, 80, 110, 75, 130, 100],
+	potential: [30, 40, 20, 50, 25, 45, 35, 30],
+	target: [160, 150, 170, 145, 155, 130, 175, 145],
+	baseline: [100, 90, 110, 85, 95, 80, 105, 90],
+};
+
 export const handlers = [
 	http.get("http://localhost:8080/api/v1/alarms", () => {
 		return HttpResponse.json(SAMPLE_ALARMS);
+	}),
+	http.get("http://localhost:8080/api/v1/metrics/oht-usage", () => {
+		return HttpResponse.json(SAMPLE_OHT_USAGE_METRICS);
+	}),
+	http.get("http://localhost:8080/api/v1/metrics/transfer-cancel", () => {
+		return HttpResponse.json(SAMPLE_TRANSFER_CANCEL_METRICS);
+	}),
+	http.get("http://localhost:8080/api/v1/metrics/transfer-store", () => {
+		return HttpResponse.json(SAMPLE_TRANSFER_STORE_METRICS);
 	}),
 ];
