@@ -1,7 +1,12 @@
+import { setConfig } from "@kubb/plugin-client/clients/axios";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+
+setConfig({
+	baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080",
+});
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
