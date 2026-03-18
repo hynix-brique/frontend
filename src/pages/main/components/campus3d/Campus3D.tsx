@@ -1,9 +1,9 @@
 import { Canvas } from "@react-three/fiber";
 import { forwardRef, useEffect, useImperativeHandle } from "react";
 import * as THREE from "three";
+import { useCampus3dStore } from "@/stores/campus3dStore";
 import { CAM_POS } from "./constants";
 import { CampusScene } from "./scene/CampusScene";
-import { useCampus3dStore } from "./store/campus3dStore";
 import { LoadingOverlay } from "./ui/LoadingOverlay";
 import { SceneControls } from "./ui/SceneControls";
 

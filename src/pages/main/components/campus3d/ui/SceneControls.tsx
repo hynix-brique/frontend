@@ -4,7 +4,7 @@ import {
 	CAM_POS,
 	CAM_TARGET,
 } from "@/pages/main/components/campus3d/constants";
-import { useCampus3dStore } from "@/pages/main/components/campus3d/store/campus3dStore";
+import { useCampus3dStore } from "@/stores/campus3dStore";
 
 export function resetCameraView() {
 	const { camera: cam, controls } = useCampus3dStore.getState();

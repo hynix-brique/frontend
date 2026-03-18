@@ -2,7 +2,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { ANGLE_STEP } from "@/pages/main/components/campus3d/constants";
 import { getSkyParams } from "@/pages/main/components/campus3d/data/skyData";
-import { useCampus3dStore } from "@/pages/main/components/campus3d/store/campus3dStore";
+import { useCampus3dStore } from "@/stores/campus3dStore";
 
 // 매 프레임 Vector3/Spherical 재생성을 막기 위한 모듈 스코프 싱글턴
 const _snapOffset = new THREE.Vector3();
