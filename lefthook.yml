@@ -4,3 +4,4 @@ pre-commit:
       run: pnpm tsc -b --noEmit
     - name: biome check
       run: pnpm biome check --write .
+      stage_fixed: true
