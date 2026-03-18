@@ -1,10 +1,19 @@
 import { ReloadOutlined } from "@ant-design/icons";
 import { Button, Card, Select } from "antd";
+import { useState } from "react";
+import { useSites } from "../../mocks/api/hooks/useSites";
 import AlarmPanel from "./components/AlarmPanel";
 import Campus3D from "./components/campus3d/Campus3D";
 import { resetCameraView } from "./components/campus3d/ui/SceneControls";
 
 export default function MainPage() {
+	const { data: sites = [] } = useSites();
+	const [selectedSite, setSelectedSite] = useState<string | undefined>(
+		undefined,
+	);
+
+	const siteOptions = sites.map((s) => ({ value: s.siteId, label: s.name }));
+
 	return (
 		<>
 			{/* Canvas + 관제 Site */}
@@ -24,8 +33,9 @@ export default function MainPage() {
 					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 						<span style={{ fontSize: 13 }}>관제 Site</span>
 						<Select
-							defaultValue="이천"
-							options={[{ value: "이천", label: "이천" }]}
+							value={selectedSite ?? siteOptions[0]?.value}
+							options={siteOptions}
+							onChange={setSelectedSite}
 							size="small"
 							allowClear={false}
 						/>

@@ -1,6 +1,7 @@
 import { HttpResponse, http } from "msw";
 import type { Alarm } from "./api/hooks/useAlarms";
 import type { OhtUsageMetrics } from "./api/hooks/useOhtUsageMetrics";
+import type { Site } from "./api/hooks/useSites";
 import type { TransferCancelMetrics } from "./api/hooks/useTransferCancelMetrics";
 import type { TransferStoreMetrics } from "./api/hooks/useTransferStoreMetrics";
 
@@ -63,6 +64,11 @@ const SAMPLE_ALARMS: Alarm[] = [
 	},
 ];
 
+const SAMPLE_SITES: Site[] = [
+	{ siteId: "icheon", name: "이천" },
+	{ siteId: "cheongju", name: "청주" },
+];
+
 const SAMPLE_OHT_USAGE_METRICS: OhtUsageMetrics = {
 	labels: [
 		"Bay-A",
@@ -109,6 +115,9 @@ const SAMPLE_TRANSFER_STORE_METRICS: TransferStoreMetrics = {
 };
 
 export const handlers = [
+	http.get("http://localhost:8080/api/v1/sites", () => {
+		return HttpResponse.json(SAMPLE_SITES);
+	}),
 	http.get("http://localhost:8080/api/v1/alarms", () => {
 		return HttpResponse.json(SAMPLE_ALARMS);
 	}),
